@@ -1,0 +1,15 @@
+# Developpement
+## Github
+github.com
+githubusercontent.com
+## Gitlab
+gitlab.com
+
+# Packages and sources
+## Chocolatey
+chocolatey.org
+
+# Communication
+## Discord
+discord.com
+cdn.discordapp.com

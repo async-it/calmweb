@@ -1,0 +1,15 @@
+# Those domains are blocked for security reasons; if one needs to be allowed, disable it in Calm Web settings or add it to the whitelist
+anydesk.com
+anyviewer.com
+connectwise.com
+remotedesktop.google.com
+goto.com
+gotomypc.com
+logmein.com
+remoteassistance.support.services.microsoft.com
+remotepc.com
+splashtop.com
+teamviewer.com
+ultraviewer.net
+zoho.com
+zohoassist.com
