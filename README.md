@@ -74,14 +74,14 @@ Some websites retain cached data or open connections: if in doubt, restart your 
 
 ## Block lists:
 https://raw.githubusercontent.com/StevenBlack/hosts/refs/heads/master/hosts  
-https://raw.githubusercontent.com/easylist/listefr/refs/heads/master/hosts.txt  https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/ultimate.txt  
+https://raw.githubusercontent.com/easylist/listefr/refs/heads/master/hosts.txt  
+https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/ultimate.txt  
 https://raw.githubusercontent.com/async-it/calmweb/refs/heads/main/filters/blocklist.txt  
 https://dl.red.flag.domains/pihole/red.flag.domains.txt  
-https://urlhaus.abuse.ch/downloads/csv/
+https://urlhaus.abuse.ch/downloads/csv/  
 
 ## Whitelist:
 https://raw.githubusercontent.com/async-it/calmweb/refs/heads/main/filters/whitelist.txt
-
 
 ### Known problems:
 
