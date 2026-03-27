@@ -8,8 +8,8 @@ CalmWeb fait office de filtre web transparent, forçant une navigation sécuris�
 
 Installé au niveau du système, il protège tous les navigateurs et bloque les éventuels logiciels de contrôle à distance qui pourraient déjà être installés.
 
-!! CalmWeb ne garanti en aucun cas d'éviter tout piratage ou arnaques. Chaqun est responsable de son activité de navigation et doit être conscient des risques.
-Il permet toutefois de réduire les risques d'être exposé et ajoute un garde-fou en bloquant certaines techniques connues, telles ques la prise en main à distance !!
+⚠️ CalmWeb ne garantit en aucun cas une protection totale contre le piratage ou les arnaques, et ne prétend pas le faire. Chaque utilisateur reste responsable de sa navigation et doit être conscient des risques encourus.
+Toutefois, CalmWeb permet de réduire certains risques en ajoutant un garde-fou : il bloque des techniques connues en se basant sur des ressources communautaires.
 
 ### Fonctionnement technique
 
