@@ -3,51 +3,82 @@
 </p>
 
 # CalmWeb
+## Français  
+CalmWeb fait office de filtre web transparent, forçant une navigation sécurisée en bloquant plus de 600 000 sites web publicitaires et malveillants. Il impose également la navigation sécurisée HTTPS et bloque diverses techniques régulièrement utilisées à mauvais escient.
 
-Camlweb is a proxy acting as Web filter aimed to protect elderly or unconfident people on the internet, protecting them from ads, scams and blocking remote control software like TeamViewer.
+Installé au niveau du système, il protège tous les navigateurs et bloque les éventuels logiciels de contrôle à distance qui pourraient déjà être installés.
 
-Why use CalmWeb?
-Calm Web is meant to protect people with no or poor internet knowledge.
-It's aggressive by design, simple yet efficient (I hope).
-It works system-wide, so no matter the browser you use, it will work and will block already installed programs or tools, even the Windows remote assistance tool!
+### Fonctionnement technique
 
-## Installation:
+CalmWeb démarre un proxy local sur le PC et configure Windows pour en forcer l’utilisation afin d’accéder à Internet.
+Il télécharge diverses listes de blocage et ajoute tous les domaines trouvés dans une liste noire, empêchant ainsi la navigation vers ceux-ci.
 
-Download and run CalmWeb_Setup.exe
+Par défaut, il :
+- bloque tous les domaines listés, sauf ceux préconfigurés dans une liste blanche
+- bloque les outils de « support à distance » régulièrement utilisés à mauvais escient
+- bloque la navigation HTTP afin de garantir une navigation sécurisée
+- bloque l’accès direct aux adresses IP
+- bloque l’utilisation de ports non standards
 
-The program will:
+### Utilisation
+Une fois installé, CalmWeb peut être oublié.
 
-- Install calmweb
-- Set up a firewall rule
-- Add a scheduled task at startup (admin rights required to set up the proxy)
-- Start the program, set up the proxy, download whitelists and blocklists
+Si vous êtes un utilisateur avancé ou si vous pensez qu’il interfère avec le bon fonctionnement de votre système, tous les paramètres de CalmWeb sont modifiables.
+En faisant un clic droit sur son icône, vous pouvez :
+- Afficher le journal afin de voir quels sites sont bloqués ou autorisés
+- Quitter ou désactiver CalmWeb afin de rétablir un accès à Internet non filtré
+- Editer le fichier de configuration pour
+- Autoriser la navigation HTTP, l’accès direct aux IP ou l’utilisation de ports alternatifs
+- Ajouter des entrées à la liste blanche (par exemple pour autoriser un logiciel de contrôle à distance spécifique)
+- Ajouter d’autres domaines à la liste noire.
 
-## What is allowed and what is blocked?
+Après toute modification, pensez à recharger la configuration.
+Certains sites web conservent du cache ou des connexions ouvertes : en cas de doute, redémarrez le PC.
 
-### By default it will block the following:
 
-- Traffic on http port
-- Browsing using IP addresses to avoid scams
-- Browsing on non-standard port (80/443)
-- Domains listed in those lists: All credits to them!  
-   https://raw.githubusercontent.com/StevenBlack/hosts/refs/heads/master/hosts  
-   https://raw.githubusercontent.com/easylist/listefr/refs/heads/master/hosts.txt  
-   https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/ultimate.txt  
-   https://raw.githubusercontent.com/async-it/calmweb/refs/heads/main/filters/blocklist.txt  
-   https://dl.red.flag.domains/pihole/red.flag.domains.txt  
-   https://urlhaus.abuse.ch/downloads/csv/
-- Domains manually added in the blocklist at %appdata%\calmweb\custom.cfg  
-  <img width="668" height="17" alt="image" src="https://github.com/user-attachments/assets/01b07662-9826-4461-acd8-ae34e458ad81" />
+# English
+CalmWeb acts as a transparent web filter, forcing secure browsing by blocking over 600,000 advertising and malicious websites. It also enforces HTTPS secure browsing and blocks various techniques commonly used without proper knowledge.
 
-### By default the following domains are whitelisted.
+Installed at the system level, it protects all browsers and blocks any remote control software that may already be installed.
 
-- Domains listed in those lists:  
-   "https://raw.githubusercontent.com/async-it/calmweb/refs/heads/main/filters/whitelist.txt"
-- Domains manually added in the whitelist at %appdata%\calmweb\custom.cfg
+### How it works
+CalmWeb starts a local proxy on the PC and configures Windows to force its use for internet access.
 
-### Useful blocked domains:
+It downloads various blocklists and adds all found domains to a blacklist, thus blocking browsing to them.
 
-[This list ](https://raw.githubusercontent.com/async-it/calmweb/refs/heads/main/filters/usefull_domains.txt) contains domains that may be useful if you're a "power user" but appear to be listed in blocklists.
+By default, it:
+- blocks all listed domains except those pre-configured in a whitelist
+- blocks "remote support" tools that are frequently misused
+- blocks HTTP browsing to ensure secure browsing
+- blocks direct access to IP addresses
+- blocks the use of non-standard ports
+
+### Usage
+Once installed, CalmWeb can be left alone.
+
+If you are an advanced user or if you believe it is interfering with your system's proper functioning, all CalmWeb settings are customizable.
+By right-clicking its icon, you can:
+- View the log to see which sites are blocked or allowed
+- Exit or disable CalmWeb to restore unfiltered internet access
+- Edit the configuration file to:
+- Allow HTTP browsing, direct IP access, or the use of alternative ports
+- Add entries to the whitelist (for example, to allow specific remote control software)
+- Add other domains to the blacklist.
+
+After making any changes, remember to reload the configuration.
+Some websites retain cached data or open connections: if in doubt, restart your PC.
+
+
+## Block lists:
+https://raw.githubusercontent.com/StevenBlack/hosts/refs/heads/master/hosts  
+https://raw.githubusercontent.com/easylist/listefr/refs/heads/master/hosts.txt  https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/ultimate.txt  
+https://raw.githubusercontent.com/async-it/calmweb/refs/heads/main/filters/blocklist.txt  
+https://dl.red.flag.domains/pihole/red.flag.domains.txt  
+https://urlhaus.abuse.ch/downloads/csv/
+
+## Whitelist:
+https://raw.githubusercontent.com/async-it/calmweb/refs/heads/main/filters/whitelist.txt
+
 
 ### Known problems:
 
