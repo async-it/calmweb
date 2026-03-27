@@ -4,7 +4,7 @@
 
 # CalmWeb
 ## Français  
-CalmWeb fait office de filtre web transparent, forçant une navigation sécurisée en bloquant plus de 600 000 sites web publicitaires, malveillants et de télémétrie. Il impose également la navigation sécurisée HTTPS et bloque diverses techniques régulièrement utilisées à mauvais escient.
+CalmWeb agit comme un filtre web transparent, conçu pour protéger les personnes âgées ou soucieuses de la sécurité de leur navigation sur Internet. Il offre une expérience plus sûre en bloquant plus de 600 000 sites publicitaires, malveillants ou de télémétrie. Il impose également l’utilisation de la navigation sécurisée HTTPS et bloque diverses techniques fréquemment utilisées à des fins malveillantes.
 
 Installé au niveau du système, il protège tous les navigateurs et bloque les éventuels logiciels de contrôle à distance qui pourraient déjà être installés.
 
