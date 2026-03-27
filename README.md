@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="300" height="300" alt="calmweb" src="https://github.com/user-attachments/assets/56e88ff3-1cb2-4263-80d0-ad7b493bb52c" />
+  <img width="200" height="200" alt="calmweb" src="https://github.com/user-attachments/assets/56e88ff3-1cb2-4263-80d0-ad7b493bb52c" />
 </p>
 
 # CalmWeb
