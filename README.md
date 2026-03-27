@@ -4,7 +4,7 @@
 
 # CalmWeb
 ## Français  
-CalmWeb fait office de filtre web transparent, forçant une navigation sécurisée en bloquant plus de 600 000 sites web publicitaires et malveillants. Il impose également la navigation sécurisée HTTPS et bloque diverses techniques régulièrement utilisées à mauvais escient.
+CalmWeb fait office de filtre web transparent, forçant une navigation sécurisée en bloquant plus de 600 000 sites web publicitaires, malveillants et de télémétrie. Il impose également la navigation sécurisée HTTPS et bloque diverses techniques régulièrement utilisées à mauvais escient.
 
 Installé au niveau du système, il protège tous les navigateurs et bloque les éventuels logiciels de contrôle à distance qui pourraient déjà être installés.
 
