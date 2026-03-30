@@ -17,8 +17,10 @@ Toutefois, CalmWeb permet de réduire certains risques en ajoutant un garde-fou 
 
 ### Fonctionnement technique
 
-Calm Web démarre un proxy local sur le PC et configure Windows pour en forcer l’utilisation afin d’accéder à Internet.
-Il télécharge diverses listes de blocage et ajoute tous les domaines trouvés dans une liste noire, empêchant ainsi la navigation vers ceux-ci.
+Calm Web démarre un [proxy](https://fr.wikipedia.org/wiki/Proxy) local sur le PC et configure Windows pour en forcer l’utilisation afin d’accéder à Internet.
+Il ne brise pas les connexion sécurisées d'origine et n'installe pas de certificats tiers.
+
+Lors de son démarrage, Calm Web télécharge diverses listes de blocage et ajoute tous les domaines trouvés dans une liste noire, empêchant ainsi la navigation vers ceux-ci.
 
 Par défaut, il :
 - Bloque tous les domaines listés, sauf ceux préconfigurés dans une liste blanche
