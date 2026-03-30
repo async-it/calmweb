@@ -2,27 +2,30 @@
   <img width="200" height="200" alt="calmweb" src="https://github.com/user-attachments/assets/56e88ff3-1cb2-4263-80d0-ad7b493bb52c" />
 </p>
 
-# CalmWeb
+# Calm Web
 ## Français  
-CalmWeb agit comme un filtre web transparent, conçu pour protéger les personnes âgées ou soucieuses de la sécurité de leur navigation sur Internet. 
-Il offre une expérience plus sûre en bloquant plus de 600 000 sites publicitaires, malveillants ou de télémétrie. Il impose également l’utilisation de la navigation sécurisée HTTPS et bloque diverses techniques fréquemment utilisées à des fins malveillantes.
+Calm Web agit comme un filtre web transparent, conçu pour protéger les personnes âgées ou soucieuses de la sécurité de leur navigation sur Internet. 
 
-Installé au niveau du système, il protège tous les navigateurs et bloque les éventuels logiciels de contrôle à distance qui pourraient déjà être installés.
+- Il offre une expérience plus sûre en bloquant plus de 600 000 sites publicitaires, malveillants ou de télémétrie.
+- Il impose l’utilisation de la navigation sécurisée HTTPS
+- Bloque les éventuels logiciels de contrôle à distance ainsi que diverses techniques fréquemment utilisées à des fins malveillantes.
 
-⚠️ CalmWeb ne garantit en aucun cas une protection totale contre le piratage ou les arnaques, et ne prétend pas le faire. Chaque utilisateur reste responsable de sa navigation et doit être conscient des risques encourus.
+Installé au niveau du système, il protège tous les navigateurs, même futurs.
+
+⚠️ Calm web ne garantit en aucun cas une protection totale contre le piratage ou les arnaques, et ne prétend pas le faire. Chaque utilisateur reste responsable de sa navigation et doit être conscient des risques encourus.
 Toutefois, CalmWeb permet de réduire certains risques en ajoutant un garde-fou : il bloque des techniques connues en se basant sur des ressources communautaires.
 
 ### Fonctionnement technique
 
-CalmWeb démarre un proxy local sur le PC et configure Windows pour en forcer l’utilisation afin d’accéder à Internet.
+Calm Web démarre un proxy local sur le PC et configure Windows pour en forcer l’utilisation afin d’accéder à Internet.
 Il télécharge diverses listes de blocage et ajoute tous les domaines trouvés dans une liste noire, empêchant ainsi la navigation vers ceux-ci.
 
 Par défaut, il :
-- bloque tous les domaines listés, sauf ceux préconfigurés dans une liste blanche
-- bloque les outils de « support à distance » régulièrement utilisés à mauvais escient
-- bloque la navigation HTTP afin de garantir une navigation sécurisée
-- bloque l’accès direct aux adresses IP
-- bloque l’utilisation de ports non standards
+- Bloque tous les domaines listés, sauf ceux préconfigurés dans une liste blanche
+- Bloque les outils de « support à distance » régulièrement utilisés à mauvais escient
+- Bloque la navigation HTTP afin de garantir une navigation sécurisée
+- Bloque l’accès direct aux adresses IP
+- Bloque l’utilisation de ports non standards
 
 ### Utilisation
 Une fois installé, CalmWeb peut être oublié.
