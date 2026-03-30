@@ -8,7 +8,7 @@ Calm Web agit comme un filtre web transparent, conçu pour protéger les personn
 
 - Il offre une expérience plus sûre en bloquant plus de 600 000 sites publicitaires, malveillants ou de télémétrie.
 - Il impose l’utilisation de la navigation sécurisée HTTPS
-- Bloque les éventuels logiciels de contrôle à distance ainsi que diverses techniques fréquemment utilisées à des fins malveillantes.
+- Bloque les logiciels de contrôle à distance courants ainsi que diverses techniques fréquemment utilisées à des fins malveillantes.
 
 Installé au niveau du système, il protège tous les navigateurs, même futurs.
 
