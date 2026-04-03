@@ -91,7 +91,8 @@ https://raw.githubusercontent.com/async-it/calmweb/refs/heads/main/filters/white
 
 ### Known problems:
 
-- Sandbox not working when CalmWeb is running
+- Sandbox not working when CalmWeb is running by default due to port block
+  Set "block_http_other_ports" to "0" 
 - Direct access to IPv6 addresses  like https://[::1]:8080
 
 ### todo / features suggestions:
