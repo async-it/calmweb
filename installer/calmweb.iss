@@ -2,7 +2,7 @@
 ; Version is injected by build.cmd via /DMyAppVersion=X.Y.Z
 ; Fallback for manual compilation:
 #ifndef MyAppVersion
-  #define MyAppVersion "0.0.0"
+#define MyAppVersion "0.0.0"
 #endif
 #define MyAppPublisher "Async IT Sàrl"
 #define MyAppURL "https://github.com/async-it/calmweb"
@@ -68,12 +68,17 @@ Filename: "schtasks"; Parameters: "/Create /tn CalmWeb /XML ""{app}\scheduled_ta
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent runascurrentuser
 
 [UninstallRun]
+; Kill running instances
+Filename: "taskkill"; Parameters: "/IM calmweb.exe /F"; Flags: runhidden; RunOnceId: "KillCalmWeb"
 ; Remove firewall rule
 Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=CalmWeb"; Flags: runhidden; RunOnceId: "RemoveFirewallRule"
 ; Delete scheduled task
 Filename: "schtasks"; Parameters: "/Delete /tn CalmWeb /F"; Flags: runhidden; RunOnceId: "DeleteScheduledTask"
 ; Reset system proxy
 Filename: "netsh"; Parameters: "winhttp reset proxy"; Flags: runhidden; RunOnceId: "ResetWinHttpProxy"
+
+[UninstallDelete]
+Type: files; Name: "{userappdata}\CalmWeb\calmweb.lock"
 
 [Code]
 procedure PatchScheduledTaskXml();

@@ -11,6 +11,8 @@ import csv
 import io
 import ipaddress
 import ssl
+import requests
+import certifi
 import threading
 import time
 import traceback
@@ -25,7 +27,6 @@ from .log import log
 # ------------------------------------------------------------------
 # Module-level helpers (used by both blocklist and whitelist loaders)
 # ------------------------------------------------------------------
-
 
 def _looks_like_ip(s: str) -> bool:
     """Return True if *s* parses as a valid IP address."""
@@ -82,7 +83,6 @@ def _download_content(url: str, http: urllib3.PoolManager) -> bytes | None:
 # Blocklist line parsers
 # ------------------------------------------------------------------
 
-
 def _parse_csv_line(line: str) -> str | None:
     """Parse a CSV line (URLHaus format) and return the hostname, or ``None``."""
     try:
@@ -135,7 +135,6 @@ def _parse_hosts_line(line: str) -> str | None:
 # ------------------------------------------------------------------
 # Blocklist content parsers
 # ------------------------------------------------------------------
-
 
 def _parse_text_blocklist(content: str, domains: set[str], cap_reached: bool) -> bool:
     """Parse plain text blocklist content (hosts-file format, plain domain list).
@@ -220,7 +219,6 @@ def _parse_blocklist_content(
 # Whitelist entry parser
 # ------------------------------------------------------------------
 
-
 def _parse_whitelist_entry(
     entry: str,
 ) -> tuple[str | None, ipaddress.IPv4Network | ipaddress.IPv6Network | None]:
@@ -260,7 +258,6 @@ def _parse_whitelist_entry(
 # BlocklistResolver
 # ===================================================================
 
-
 class BlocklistResolver:
     """Download, parse, and query blocklists / whitelists."""
 
@@ -276,11 +273,7 @@ class BlocklistResolver:
         self._lock = threading.Lock()
         self._loading_lock = threading.Lock()
 
-        # Dedicated whitelist structures:
-        # - whitelisted_domains_local: domain/host strings
-        # - whitelisted_networks: ip_network objects for CIDR
-        # Both protected by self._lock.
-        # Non-global copy; merged with config.whitelisted_domains when needed.
+        # Dedicated whitelist structures
         self.whitelisted_domains_local: set[str] = set()
         self.whitelisted_networks: set[ipaddress.IPv4Network | ipaddress.IPv6Network] = set()
         self.whitelist_download_successful: bool = False
@@ -305,9 +298,10 @@ class BlocklistResolver:
             config._RESOLVER_LOADING.set()
             try:
                 domains: set[str] = set()
+                ssl_context = ssl.create_default_context(cafile=certifi.where())
                 http = urllib3.PoolManager(
                     cert_reqs="CERT_REQUIRED",
-                    ssl_context=ssl.create_default_context(),
+                    ssl_context=ssl_context,
                 )
                 cap_reached = False
 
@@ -337,16 +331,12 @@ class BlocklistResolver:
     # ------------------------------------------------------------------
 
     def _load_whitelist(self) -> None:
-        """Download and parse whitelists, updating local and global sets.
-
-        Supports: exact domains, ``*.example.com`` (stored as
-        ``"example.com"``), CIDR (``1.2.3.0/24``), and plain IPs.
-        Atomic update of structures protected by ``self._lock``.
-        """
+        """Download and parse whitelists, updating local and global sets."""
         try:
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
             http = urllib3.PoolManager(
                 cert_reqs="CERT_REQUIRED",
-                ssl_context=ssl.create_default_context(),
+                ssl_context=ssl_context,
             )
             new_domains: set[str] = set()
             new_networks: set[ipaddress.IPv4Network | ipaddress.IPv6Network] = set()
@@ -397,16 +387,11 @@ class BlocklistResolver:
                         )
                         time.sleep(config.DOWNLOAD_RETRY_BASE_DELAY_SECS + attempt * 2)
 
-            # Atomic update -- the lock protects atomicity of the
-            # clear + update sequence on the global set as well.
+            # Atomic update
             with self._lock:
                 self.whitelisted_domains_local = new_domains
                 self.whitelisted_networks = new_networks
                 self.whitelist_download_successful = any_download_succeeded
-
-                # Reflect into the global config.whitelisted_domains set.
-                # The lock ensures the set is never observed in a half-empty
-                # state between clear() and update().
                 try:
                     config.whitelisted_domains.clear()
                     config.whitelisted_domains.update(new_domains)
@@ -427,17 +412,10 @@ class BlocklistResolver:
 
     @staticmethod
     def _looks_like_ip(s: str) -> bool:
-        """Return True if *s* parses as a valid IP address."""
         return _looks_like_ip(s)
 
     def is_whitelisted(self, hostname: str | None) -> bool:
-        """Check whether *hostname* is explicitly whitelisted.
-
-        Matches exact domains, parent domains (wildcard), plain IPs,
-        and CIDR networks.  Sub-domains of a whitelisted domain are
-        considered whitelisted (e.g. if ``example.com`` is whitelisted,
-        ``sub.a.example.com`` is allowed).
-        """
+        """Check whether *hostname* is explicitly whitelisted."""
         try:
             if not hostname:
                 return False
@@ -450,10 +428,8 @@ class BlocklistResolver:
                 if _looks_like_ip(host):
                     ip_obj = ipaddress.ip_address(host)
                     with self._lock:
-                        # Exact IP in domain whitelist?
                         if host in self.whitelisted_domains_local:
                             return True
-                        # Any network contains the IP?
                         for net in self.whitelisted_networks:
                             if ip_obj in net:
                                 return True
@@ -463,7 +439,6 @@ class BlocklistResolver:
 
             parts = host.split(".")
             with self._lock:
-                # Check candidate suffixes: host, parent, ..., top-level
                 for i in range(len(parts)):
                     candidate = ".".join(parts[i:])
                     if candidate in self.whitelisted_domains_local:
@@ -475,17 +450,7 @@ class BlocklistResolver:
             return False
 
     def _is_blocked(self, hostname: str | None) -> bool:
-        """Return True if *hostname* should be blocked.
-
-        Priority:
-          1. Whitelist has absolute priority -- always allow.
-          2. Direct IP access uses the ``block_ip_direct`` flag.
-          3. Check ``blocked_domains`` and ``manual_blocked_domains``
-             (parent domains included).
-
-        The defensive whitelist check here is intentional: callers also
-        check whitelist, but ``_is_blocked`` provides a safety net.
-        """
+        """Return True if *hostname* should be blocked."""
         try:
             if not hostname:
                 return False
@@ -501,24 +466,20 @@ class BlocklistResolver:
                     return False
             except Exception as e:
                 log(f"_is_blocked: whitelist check failed for {hostname}: {e}")
-                # On error, do not block
                 return False
 
             # 2) Direct IP handling
             try:
                 if _looks_like_ip(host):
-                    # Check global whitelist for exact IP match
                     if host in config.whitelisted_domains:
                         log(f"\u2705 [WHITELIST ALLOW IP] {hostname}")
                         return False
-                    # Otherwise rely on block_ip_direct flag
                     return bool(config.block_ip_direct)
             except Exception:
-                # If IP detection fails, continue as hostname
                 pass
 
             parts = host.split(".")
-            # 3) Blocklist check (with parents)
+            # 3) Blocklist check
             try:
                 with self._lock:
                     if host in self.blocked_domains or host in config.manual_blocked_domains:

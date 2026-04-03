@@ -96,7 +96,7 @@ def run_calmweb() -> None:
     try:
         icon = Icon("calmweb")
         icon.icon = create_image()  # placeholder until apply_state_icon runs
-        icon.title = "Calm Web (Starting...)"
+        icon.title = "Calm Web (En cours de démarrage...)"
         apply_state_icon(icon)
         update_menu(icon)
 
@@ -154,8 +154,8 @@ def _show_already_running_alert() -> None:
         root = Tk()
         root.withdraw()
         messagebox.showwarning(
-            "CalmWeb",
-            "CalmWeb is already running. Please close the existing instance before launching again.",
+            "Calm Web",
+            "Calm Web est déjà en cours d'exécution.",
             parent=root,
         )
         root.destroy()
@@ -178,7 +178,7 @@ def main() -> None:
 
     instance_lock = acquire_single_instance_lock()
     if instance_lock is None:
-        log("Another CalmWeb instance is already running. Exiting this launch.")
+        log("Une autre instance de Calm Web est déjà en cours d'exécution")
         _show_already_running_alert()
         return
 
