@@ -12,7 +12,7 @@ Calm Web agit comme un filtre web transparent, conçu pour protéger les personn
 
 Installé au niveau du système, il protège tous les navigateurs, même futurs.
 
-⚠️ Calm web ne garantit en aucun cas une protection totale contre le piratage ou les arnaques, et ne prétend pas le faire. Chaque utilisateur reste responsable de sa navigation et doit être conscient des risques encourus.
+⚠️ Calm Web ne garantit en aucun cas une protection totale contre le piratage ou les arnaques, et ne prétend pas le faire. Chaque utilisateur reste responsable de sa navigation et doit être conscient des risques encourus.
 Toutefois, CalmWeb permet de réduire certains risques en ajoutant un garde-fou : il bloque des techniques connues en se basant sur des ressources communautaires.
 
 ### Fonctionnement technique
