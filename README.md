@@ -44,6 +44,10 @@ En faisant un clic droit sur son icône, vous pouvez :
 Après toute modification, pensez à recharger la configuration.
 Certains sites web conservent du cache ou des connexions ouvertes : en cas de doute, redémarrez le PC.
 
+### Test:
+Envie de constater l'efficacité?
+[Activer calmweb et rendez-vous ici](https://paileactivist.github.io/toolz/adblock.html)
+
 
 # English
 CalmWeb acts as a transparent web filter, forcing secure browsing by blocking over 600,000 advertising and malicious websites. It also enforces HTTPS secure browsing and blocks various techniques commonly used without proper knowledge.
