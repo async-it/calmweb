@@ -10,7 +10,7 @@ Calm Web agit comme un filtre web transparent, conçu pour protéger les personn
 - Il impose l’utilisation de la navigation sécurisée HTTPS
 - Bloque les [logiciels de contrôle à distance](https://github.com/async-it/calmweb/blob/main/filters/blocklist.txt) courants ainsi que diverses techniques fréquemment utilisées à des fins malveillantes.
 
-Installé au niveau du système, il protège tous les navigateurs, même futurs.
+Installé au niveau du système, il protège tous les utilisateurs et navigateurs, même futurs.
 
 ⚠️ Calm Web n'est pas un anti-virus et ne garantit en aucun cas une protection totale contre le piratage ou les arnaques, et ne prétend pas le faire. Chaque utilisateur reste responsable de sa navigation et doit être conscient des risques encourus.
 Toutefois, CalmWeb permet de réduire certains risques en ajoutant un garde-fou : il bloque des techniques connues en se basant sur des ressources communautaires.
