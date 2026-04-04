@@ -1,6 +1,7 @@
 # Those domains are allowed to ensure good functionality of the client
 
-# Microsoft updates and usefull services
+# Microsoft
+## Updates and known usefull services
 data.microsoft.com
 download.windowsupdate.com
 mp.microsoft.com
@@ -13,14 +14,20 @@ ctldl.windowsupdate.com
 digicert.com
 pki.goog
 
-# This domain appears useful for sharing but is in the URLHaus list.
+# User Experience
+## This domain appears useful for sharing but is in the URLHaus list.
 drive.google.com
 
-# Speedtest.net uses a custom port and is a commonly used tool
+## Speedtest.net uses a custom port and is a commonly used tool
 ooklaserver.net
 
-# Web Content Delivery
+## Google Storage
+storage.googleapis.com
+
 ## Ensure some websites display correctly
 cdn.jsdelivr.net
-# Google Storage
-storage.googleapis.com
+
+# Calm Web
+## Domains needed to access Calm Web ressources :)
+github.com
+raw.githubusercontent.com
