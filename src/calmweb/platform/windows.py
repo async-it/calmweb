@@ -154,30 +154,17 @@ def enable_proxy(
     if not is_windows():
         log("enable_proxy: not on Windows, skipping.")
         return
+
+    proxy_str = f"{host}:{port}"
+
     try:
-        proxy_str = f"{host}:{port}"
-        with contextlib.suppress(Exception):
-            subprocess.run(
-                ["netsh", "winhttp", "set", "proxy", proxy_str],
-                check=False,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-        with contextlib.suppress(Exception):
-            subprocess.run(
-                ["setx", "HTTP_PROXY", f"http://{proxy_str}"],
-                check=False,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            subprocess.run(
-                ["setx", "HTTPS_PROXY", f"http://{proxy_str}"],
-                check=False,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
         try:
             _set_registry_proxy(1, proxy_str)
         except Exception as e:
             log(f"enable_proxy: registry write failed: {e}")
+
         log(f"System proxy configured on {proxy_str}")
+
     except Exception as e:
         log(f"Error in enable_proxy: {e}")
 
