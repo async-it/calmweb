@@ -1,0 +1,17 @@
+CalmWeb has been installed successfully.
+
+The following components were configured:
+- CalmWeb executable installed to your chosen directory
+- Windows Firewall rule added (allows CalmWeb proxy traffic)
+- Scheduled task created (CalmWeb starts automatically at logon)
+
+Configuration:
+- User settings are stored in: %APPDATA%\CalmWeb\custom.cfg
+- You can edit blocked/whitelisted domains there
+- Right-click the CalmWeb tray icon for quick access to settings
+
+To uninstall CalmWeb, use "Add or Remove Programs" in Windows Settings.
+The uninstaller will remove the firewall rule, scheduled task, and proxy
+settings automatically.
+
+For help, visit: https://github.com/async-it/calmweb
