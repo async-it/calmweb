@@ -65,7 +65,7 @@ Filename: "netsh"; Parameters: "advfirewall firewall add rule name=CalmWeb dir=i
 ; Create scheduled task
 Filename: "schtasks"; Parameters: "/Create /tn CalmWeb /XML ""{app}\scheduled_task.xml"" /F"; Flags: runhidden
 ; Launch after install (optional)
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent runascurrentuser
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 ; Kill running instances
