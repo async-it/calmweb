@@ -180,32 +180,41 @@ def run_log_viewer():
     first_load = True # Flag pour forcer le scroll au premier lancement
 
     def refresh():
-        nonlocal first_load
-        try:
-            if not win.winfo_exists():
-                return
+            nonlocal first_load
+            try:
+                if not win.winfo_exists():
+                    return
 
-            with _LOG_LOCK:
-                content = "\n".join(list(log_buffer))
+                with _LOG_LOCK:
+                    content = "\n".join(list(log_buffer))
 
-            # On vérifie la position AVANT la mise à jour
-            current_pos = text_area.yview()[1]
-            is_at_bottom = current_pos >= 0.95
+                # 1. SAUVEGARDE de l'état actuel
+                current_pos = text_area.yview() # (début, fin) de la vue
+                cursor_index = text_area.index(tk.INSERT) # Position du curseur
+                is_at_bottom = current_pos[1] >= 0.95
 
-            text_area.config(state="normal")
-            text_area.delete(1.0, tk.END)
-            text_area.insert(tk.END, content if content else "No logs yet.")
-            
-            # SCROLL LOGIC: 
-            # On scroll si c'est le premier chargement OU si l'utilisateur est déjà en bas
-            if first_load or is_at_bottom:
-                text_area.see(tk.END)
-                first_load = False # Une fois fait, on laisse le scroll auto gérer
-            
-            text_area.config(state="disabled")
-            refresh_id[0] = win.after(1000, refresh)
-        except Exception:
-            pass
+                text_area.config(state="normal")
+                
+                # 2. MISE À JOUR du contenu
+                text_area.delete(1.0, tk.END)
+                text_area.insert(tk.END, content if content else "No logs yet.")
+
+                # 3. RESTAURATION intelligente
+                if first_load or is_at_bottom:
+                    # Si on est en bas ou premier chargement, on suit le flux
+                    text_area.see(tk.END)
+                    first_load = False
+                else:
+                    # Si l'utilisateur a cliqué ailleurs ou remonté :
+                    # On remet le curseur là où il était
+                    text_area.mark_set(tk.INSERT, cursor_index)
+                    # On remet la barre de défilement exactement là où elle était
+                    text_area.yview_moveto(current_pos[0])
+                
+                text_area.config(state="disabled")
+                refresh_id[0] = win.after(1000, refresh)
+            except Exception:
+                pass
 
     def on_close():
         # IMPORTANT : On arrête tout avant de détruire

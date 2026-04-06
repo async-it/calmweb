@@ -58,7 +58,6 @@ echo %APP_VERSION%> "%REPO_ROOT%\VERSION"
   --hidden-import urllib3 ^
   --hidden-import tkinter ^
   --hidden-import tkinter.scrolledtext ^
-  --add-binary "C:\Python314\python314.dll;." ^
   --add-data "%REPO_ROOT%\resources\calmweb.png;." ^
   --add-data "%REPO_ROOT%\resources\calmweb_active.png;." ^
   --add-data "%REPO_ROOT%\VERSION;." ^
