@@ -24,7 +24,7 @@ from pystray import Menu, MenuItem
 
 from . import __version__, config
 from .config_io import get_custom_cfg_path, load_custom_cfg_to_globals, write_default_custom_cfg
-from .log import log
+from .log import log_buffer, _LOG_LOCK, log
 from .platform.windows import disable_proxy, enable_proxy
 
 if TYPE_CHECKING:
@@ -159,53 +159,79 @@ def create_image() -> Image.Image | None:
 # Log viewer (runs in a separate process)
 # ===================================================================
 
+# Variable globale pour suivre le thread
+_log_thread = None
 
-def run_log_viewer() -> None:
-    """Standalone Tk window that auto-refreshes the log from memory every second.
-
-    Designed to run in a separate process to avoid Tk threading issues.
-    Note: Since this runs in a separate process, it won't see the main process's
-    memory buffer. We should probably run it in-thread or use a different mechanism.
-    For now, we'll update it to reflect that file logging is disabled.
-    """
+def run_log_viewer():
+    # Création d'une instance Tk propre à ce thread
     win = tk.Tk()
     win.title("Calm Web - Log")
     win.geometry("780x440")
-    text_area = ScrolledText(win, wrap=tk.WORD)
+    
+    # Force la fenêtre au premier plan à l'ouverture
+    win.lift()
+    win.attributes('-topmost', True)
+    win.after(100, lambda: win.attributes('-topmost', False))
+
+    text_area = ScrolledText(win, wrap=tk.WORD, bg="white", fg="black")
     text_area.pack(expand=True, fill="both")
-    text_area.config(state="disabled")
+    
+    refresh_id = [None]
+    first_load = True # Flag pour forcer le scroll au premier lancement
 
-    def refresh() -> None:
-        from .log import log_buffer
-
-        content = "\n".join(log_buffer)
-        if not content:
-            content = "No logs found."
-
+    def refresh():
+        nonlocal first_load
         try:
+            if not win.winfo_exists():
+                return
+
+            with _LOG_LOCK:
+                content = "\n".join(list(log_buffer))
+
+            # On vérifie la position AVANT la mise à jour
+            current_pos = text_area.yview()[1]
+            is_at_bottom = current_pos >= 0.95
+
             text_area.config(state="normal")
             text_area.delete(1.0, tk.END)
-            text_area.insert(tk.END, content)
-            text_area.see(tk.END)
+            text_area.insert(tk.END, content if content else "No logs yet.")
+            
+            # SCROLL LOGIC: 
+            # On scroll si c'est le premier chargement OU si l'utilisateur est déjà en bas
+            if first_load or is_at_bottom:
+                text_area.see(tk.END)
+                first_load = False # Une fois fait, on laisse le scroll auto gérer
+            
             text_area.config(state="disabled")
+            refresh_id[0] = win.after(1000, refresh)
         except Exception:
             pass
-        win.after(1000, refresh)
 
+    def on_close():
+        # IMPORTANT : On arrête tout avant de détruire
+        if refresh_id[0]:
+            win.after_cancel(refresh_id[0])
+        win.quit() # Sort de mainloop
+        win.destroy() # Détruit les widgets
+
+    win.protocol("WM_DELETE_WINDOW", on_close)
+    
     refresh()
-    with contextlib.suppress(Exception):
-        win.mainloop()
+    win.mainloop() # Bloque ici jusqu'à win.quit()
 
+def show_log_window():
+    global _log_thread
+    
+    # Si le thread précédent est encore vivant, on ne fait rien 
+    # (ou on pourrait win.lift() la fenêtre existante, mais c'est complexe entre threads)
+    if _log_thread and _log_thread.is_alive():
+        log("Log window is already active.")
+        return
 
-def show_log_window() -> None:
-    """Launch the log viewer in a separate thread to share the in-memory buffer."""
-    try:
-        threading.Thread(target=run_log_viewer, daemon=True).start()
-        log("Opening log window...")
-    except Exception as e:
-        log(f"Unable to open log window: {e}")
-
-
+    # On lance un nouveau thread
+    _log_thread = threading.Thread(target=run_log_viewer, daemon=True)
+    _log_thread.start()
+        
 # ===================================================================
 # Config editor
 # ===================================================================
