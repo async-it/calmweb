@@ -12,6 +12,7 @@ import platform
 import subprocess
 import sys
 import threading
+import customtkinter as ctk
 import time
 import tkinter as tk
 from pathlib import Path
@@ -154,17 +155,23 @@ def create_image() -> Image.Image | None:
     except Exception:
         return None
 
-
 # ===================================================================
-# Log viewer (runs in a separate process)
+# Log viewer (runs in a separate thread) - CustomTkinter Version
 # ===================================================================
 
-# Variable globale pour suivre le thread
 _log_thread = None
+_log_window_lock = threading.Lock()
+_log_window = None
 
 def run_log_viewer():
-    # Création d'une instance Tk propre à ce thread
-    win = tk.Tk()
+    """Run the log viewer in a separate CustomTkinter instance."""
+    global _log_window
+    
+    # Configuration du thème global (Dark/Light mode automatique selon l'OS)
+    ctk.set_appearance_mode("System")
+    ctk.set_default_color_theme("blue")
+    
+    win = ctk.CTk()
     win.title("Calm Web - Log")
     win.geometry("780x440")
     
@@ -172,12 +179,21 @@ def run_log_viewer():
     win.lift()
     win.attributes('-topmost', True)
     win.after(100, lambda: win.attributes('-topmost', False))
-
-    text_area = ScrolledText(win, wrap=tk.WORD, bg="white", fg="black")
-    text_area.pack(expand=True, fill="both")
+    
+    # Utilisation du widget texte enrichi de CustomTkinter
+    text_area = ctk.CTkTextbox(
+        win, 
+        wrap="word", 
+        font=ctk.CTkFont(family="Consolas", size=12)
+    )
+    text_area.pack(expand=True, fill="both", padx=10, pady=10)
     
     refresh_id = [None]
-    first_load = True # Flag pour forcer le scroll au premier lancement
+    first_load = True
+    
+    # Stocke la référence au contexte
+    with _log_window_lock:
+        _log_window = win
 
     def refresh():
         nonlocal first_load
@@ -188,61 +204,91 @@ def run_log_viewer():
             with _LOG_LOCK:
                 content = "\n".join(list(log_buffer))
 
-            # On vérifie la position AVANT la mise à jour
+            # Récupère la position du scroll pour l'auto-scroll
             current_pos = text_area.yview()[1]
             is_at_bottom = current_pos >= 0.95
 
-            text_area.config(state="normal")
-            text_area.delete(1.0, tk.END)
-            text_area.insert(tk.END, content if content else "No logs yet.")
+            # Mise à jour du texte
+            text_area.configure(state="normal")
+            text_area.delete("1.0", ctk.END)
+            text_area.insert(ctk.END, content if content else "No logs yet.")
             
-            # SCROLL LOGIC: 
-            # On scroll si c'est le premier chargement OU si l'utilisateur est déjà en bas
+            # Défilement automatique
             if first_load or is_at_bottom:
-                text_area.see(tk.END)
-                first_load = False # Une fois fait, on laisse le scroll auto gérer
+                text_area.see(ctk.END)
+                first_load = False
             
-            text_area.config(state="disabled")
+            text_area.configure(state="disabled")
+            
+            # Boucle de rafraîchissement (1000 ms)
             refresh_id[0] = win.after(1000, refresh)
+            
+        except Exception as e:
+            log(f"Refresh error: {e}")
+
+    def on_close():
+        """Arrête proprement la boucle et détruit la fenêtre."""
+        nonlocal refresh_id
+        try:
+            if refresh_id[0]:
+                win.after_cancel(refresh_id[0])
+                refresh_id[0] = None
+        except Exception:
+            pass
+        
+        try:
+            win.quit()
+        except Exception:
+            pass
+        
+        try:
+            win.destroy()
         except Exception:
             pass
 
-    def on_close():
-        # IMPORTANT : On arrête tout avant de détruire
-        if refresh_id[0]:
-            win.after_cancel(refresh_id[0])
-        win.quit() # Sort de mainloop
-        win.destroy() # Détruit les widgets
-
     win.protocol("WM_DELETE_WINDOW", on_close)
     
-    refresh()
-    win.mainloop() # Bloque ici jusqu'à win.quit()
+    try:
+        refresh()
+        win.mainloop()
+    except Exception as e:
+        log(f"Log viewer error: {e}")
+    finally:
+        with _log_window_lock:
+            _log_window = None
 
 def show_log_window():
-    global _log_thread
+    """Show the log viewer window (create if needed, raise if exists)."""
+    global _log_thread, _log_window
     
-    # Si le thread précédent est encore vivant, on ne fait rien 
-    # (ou on pourrait win.lift() la fenêtre existante, mais c'est complexe entre threads)
+    # Vérifie si la fenêtre existe déjà
+    with _log_window_lock:
+        if _log_window and _log_window.winfo_exists():
+            try:
+                # Restaure la fenêtre si elle est minimisée (Windows spécifique)
+                if _log_window.state() == "iconic":
+                    _log_window.deiconify()
+                _log_window.lift()
+                _log_window.focus()
+            except Exception:
+                pass
+            return
+    
+    # Vérifie si le thread est toujours actif
     if _log_thread and _log_thread.is_alive():
-        log("Log window is already active.")
+        try:
+            # Essaie de lever la fenêtre
+            if _log_window and _log_window.winfo_exists():
+                if _log_window.state() == "iconic":
+                    _log_window.deiconify()
+                _log_window.lift()
+                _log_window.focus()
+        except Exception:
+            pass
         return
 
-    # On lance un nouveau thread
-    _log_thread = threading.Thread(target=run_log_viewer, daemon=True)
-    _log_thread.start()
-
-def show_log_window():
-    global _log_thread
-    
-    # Si le thread précédent est encore vivant, on ne fait rien 
-    # (ou on pourrait win.lift() la fenêtre existante, mais c'est complexe entre threads)
-    if _log_thread and _log_thread.is_alive():
-        log("Log window is already active.")
-        return
-
-    # On lance un nouveau thread
-    _log_thread = threading.Thread(target=run_log_viewer, daemon=True)
+    # Lance un nouveau thread non-daemon
+    _log_thread = threading.Thread(target=run_log_viewer, daemon=False)
     _log_thread.start()
         
 # ===================================================================
@@ -639,8 +685,6 @@ def quit_app(icon: Icon | None = None, item: Any | None = None) -> None:
         log("Shutting down Calm Web application.")
         # Brief delay to let threads finish cleanly
         time.sleep(0.2)
-        # Force a clean exit
-        release_single_instance_lock(instance_lock)
         try:
             os._exit(0)
         except Exception:

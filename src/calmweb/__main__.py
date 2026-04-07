@@ -142,7 +142,6 @@ def run_calmweb() -> None:
         except KeyboardInterrupt:
             quit_app(None)
 
-
 # ===================================================================
 # Entry point with auto-restart and installer detection
 # ===================================================================
