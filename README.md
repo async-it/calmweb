@@ -15,6 +15,11 @@ Installé au niveau du système, il protège tous les utilisateurs et navigateur
 ⚠️ Calm Web n'est pas un anti-virus et ne garantit en aucun cas une protection totale contre le piratage ou les arnaques, et ne prétend pas le faire. Chaque utilisateur reste responsable de sa navigation et doit être conscient des risques encourus.
 Toutefois, CalmWeb permet de réduire certains risques en ajoutant un garde-fou : il bloque des techniques connues en se basant sur des ressources communautaires.
 
+### Installation
+Télécharger la dernière version de Calmweb [ICI](https://github.com/async-it/calmweb/releases/latest)
+Executer le fichier téléchargé et suivre les indications
+Calm Web Démarre dans la barre de tâches (il peut être nécéssaire de cliquer sur <img width="39" height="35" alt="image" src="https://github.com/user-attachments/assets/f77c8c8a-8197-4ee4-948d-e1118fd6fa12" />)
+
 ### Fonctionnement technique
 
 Calm Web démarre un [proxy](https://fr.wikipedia.org/wiki/Proxy) local sur le PC et configure Windows pour en forcer l’utilisation afin d’accéder à Internet.
