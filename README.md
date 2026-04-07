@@ -18,7 +18,8 @@ Toutefois, CalmWeb permet de réduire certains risques en ajoutant un garde-fou 
 ### Installation
 Télécharger la dernière version de Calmweb [ICI](https://github.com/async-it/calmweb/releases/latest)
 Executer le fichier téléchargé et suivre les indications
-Calm Web Démarre dans la barre de tâches (il peut être nécéssaire de cliquer sur <img width="39" height="35" alt="image" src="https://github.com/user-attachments/assets/f77c8c8a-8197-4ee4-948d-e1118fd6fa12" />)
+Calm Web Démarre dans la barre de tâches (il peut être nécéssaire de cliquer sur <img width="32" height="27" alt="image" src="https://github.com/user-attachments/assets/20bafe23-b3ca-411e-8706-922b123859b2" /> situé en bas à droite)
+)
 
 ### Fonctionnement technique
 
