@@ -59,7 +59,7 @@ def run_calmweb() -> None:
             config.current_resolver = resolver
             if not resolver.whitelist_download_successful:
                 config.block_enabled = False
-                log("[⚠️] Whitelist download failed at startup; blocking kept disabled.")
+                log("[⚠️] Erreur de téléchargement de la liste blanche, désactivation de Calm Web")
         except Exception as e:
             config.block_enabled = False
             log(f"Error creating resolver: {e}")
@@ -88,8 +88,8 @@ def run_calmweb() -> None:
             update_menu(icon)
 
         log(
-            f"Calm Web started. Proxy on {config.PROXY_BIND_IP}:{config.PROXY_PORT}, "
-            f"blocking {'enabled' if config.block_enabled else 'disabled'}."
+            f"Calm Web démarré. Proxy actif {config.PROXY_BIND_IP}:{config.PROXY_PORT}, "
+            f"Protection {'Activée' if config.block_enabled else 'Désactivée'}."
         )
 
     # Start systray icon first; heavy initialization is deferred to setup callback.
@@ -186,7 +186,7 @@ def main() -> None:
 
     while restart_count < max_restarts:
         try:
-            log(f"Starting CalmWeb (attempt {restart_count + 1})")
+            log(f"Démarrage de Calm Web (attempt {restart_count + 1})")
 
             # Filename-based installer detection
             exe_name = os.path.basename(sys.argv[0]).lower()

@@ -69,9 +69,9 @@ def parse_custom_cfg(path: str) -> tuple[set[str], set[str]]:
 
     if blocked or whitelist:
         log(
-            f"custom.cfg loaded: {len(blocked)} blocked, {len(whitelist)} whitelisted, "
-            f"IP block={config.block_ip_direct}, HTTP block={config.block_http_traffic}, "
-            f"HTTP other ports={config.block_http_other_ports}"
+            f"custom.cfg chargé: {len(blocked)} blocked, {len(whitelist)} whitelisted, "
+            f"Blocage IP={config.block_ip_direct}, Blocage HTTP={config.block_http_traffic}, "
+            f"Ports alternatifs={config.block_http_other_ports}"
         )
 
     return blocked, whitelist
@@ -142,7 +142,7 @@ def should_update_red_flag_domains() -> bool:
 def download_red_flag_domains() -> bool:
     """Download and cache red.flag.domains locally."""
     try:
-        log("📥 Downloading red.flag.domains...")
+        log("📥 Téléchargement red.flag.domains...")
 
         # Create directory if needed
         os.makedirs(config.USER_CFG_DIR, exist_ok=True)
@@ -159,7 +159,7 @@ def download_red_flag_domains() -> bool:
         )
 
         if response.status != 200:
-            log(f"❌ Failed to download red.flag.domains: HTTP {response.status}")
+            log(f"❌ Erreur de téléchargement red.flag.domains: HTTP {response.status}")
             return False
 
         # Save file
@@ -170,7 +170,7 @@ def download_red_flag_domains() -> bool:
         with open(config.RED_FLAG_TIMESTAMP_PATH, "w") as f:
             f.write(datetime.now().isoformat())
 
-        log(f"✅ red.flag.domains updated ({len(response.data)} bytes)")
+        log(f"✅ red.flag.domains mis à jour ({len(response.data)} bytes)")
         return True
 
     except Exception as e:

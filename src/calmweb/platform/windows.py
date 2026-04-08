@@ -121,7 +121,7 @@ def add_firewall_rule(target_file: str) -> None:
             check=True,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
-        log("Firewall rules added.")
+        log("Règles pare-feu ajoutée")
     except Exception as e:
         log(f"Firewall error: {e}")
 
@@ -163,7 +163,7 @@ def enable_proxy(
         except Exception as e:
             log(f"enable_proxy: registry write failed: {e}")
 
-        log(f"System proxy configured on {proxy_str}")
+        log(f"Proxy système configuré sur {proxy_str}")
 
     except Exception as e:
         log(f"Error in enable_proxy: {e}")
@@ -189,7 +189,7 @@ def disable_proxy() -> None:
             _set_registry_proxy(0, "")
         except Exception as e:
             log(f"disable_proxy: registry clear failed: {e}")
-        log("System proxy reset.")
+        log("Proxy réinitialisé")
     except Exception as e:
         log(f"Error in disable_proxy: {e}")
 

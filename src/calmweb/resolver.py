@@ -45,7 +45,7 @@ def _download_content(url: str, http: urllib3.PoolManager) -> bytes | None:
     """
     for attempt in range(config.DOWNLOAD_MAX_RETRIES):
         try:
-            log(f"\u2b07\ufe0f Loading blocklist {url} (attempt {attempt + 1})")
+            log(f"\u2b07\ufe0f Chargement de la liste noir {url} (attempt {attempt + 1})")
 
             if url.startswith("file://"):
                 file_path = url[7:]  # Strip "file://"
@@ -72,10 +72,10 @@ def _download_content(url: str, http: urllib3.PoolManager) -> bytes | None:
             return raw_data
 
         except Exception as e:
-            log(f"[Error] Loading {url} attempt {attempt + 1}: {e}")
+            log(f"[Erreur] Chargement {url} tentative {attempt + 1}: {e}")
             time.sleep(config.DOWNLOAD_RETRY_BASE_DELAY_SECS + attempt * 2)
 
-    log(f"[\u26a0\ufe0f] Failed to download blocklist from {url}")
+    log(f"[\u26a0\ufe0f] Echec de téléchargement depuis {url}")
     return None
 
 
@@ -150,7 +150,7 @@ def _parse_text_blocklist(content: str, domains: set[str], cap_reached: bool) ->
             if len(domains) >= config.MAX_BLOCKED_DOMAINS:
                 cap_reached = True
                 log(
-                    f"\u26a0\ufe0f Domain limit reached ({config.MAX_BLOCKED_DOMAINS}), truncating."
+                    f"\u26a0\ufe0f Limite de domaines atteinte ({config.MAX_BLOCKED_DOMAINS}), truncating."
                 )
                 break
     return cap_reached
@@ -163,14 +163,14 @@ def _parse_zip_blocklist(
     cap_reached: bool,
 ) -> bool:
     """Extract and parse ZIP archive contents.  Returns updated *cap_reached*."""
-    log(f"\u2B1C ZIP archive detected: {url}")
+    log(f"\u2B1C ZIP archive détectée: {url}")
     with zipfile.ZipFile(io.BytesIO(raw_data)) as zf:
         for name in zf.namelist():
             if cap_reached:
                 break
             if not name.lower().endswith((".txt", ".csv", ".log")):
                 continue
-            log(f"   -> Reading {name} from ZIP archive")
+            log(f"   -> Lecture {name} depuis archive ZIP")
             content = zf.read(name).decode("utf-8", errors="ignore")
 
             for line in content.splitlines():
@@ -192,7 +192,7 @@ def _parse_zip_blocklist(
                 if len(domains) >= config.MAX_BLOCKED_DOMAINS:
                     cap_reached = True
                     log(
-                        f"\u26a0\ufe0f Domain limit reached "
+                        f"\u26a0\ufe0f Limite de domaine atteinte "
                         f"({config.MAX_BLOCKED_DOMAINS}), truncating."
                     )
     return cap_reached
@@ -283,7 +283,7 @@ class BlocklistResolver:
             self._load_blocklist()
             self._load_whitelist()
         except Exception as e:
-            log(f"BlocklistResolver init error: {e}")
+            log(f"Erreur d'initialisation de BlocklistResolver: {e}")
 
     # ------------------------------------------------------------------
     # Blocklist loading
@@ -292,7 +292,7 @@ class BlocklistResolver:
     def _load_blocklist(self) -> None:
         """Download all configured blocklists and rebuild the blocked-domains set."""
         if self._loading_lock.locked():
-            log("Blocklist load already in progress, skipping.")
+            log("Chargement de la liste noir déjà en cours.")
             return
         with self._loading_lock:
             config._RESOLVER_LOADING.set()
@@ -318,10 +318,10 @@ class BlocklistResolver:
                     self.blocked_domains = domains
                     self.last_reload = time.time()
 
-                log(f"\u2705 {len(domains)} blocked domains/IPs loaded.")
+                log(f"\u2705 {len(domains)} domaines / IP mises en liste noir")
 
             except Exception as e:
-                log(f"Error in _load_blocklist: {e}\n{traceback.format_exc()}")
+                log(f"Erreur dans _load_blocklist: {e}\n{traceback.format_exc()}")
 
             finally:
                 config._RESOLVER_LOADING.clear()
@@ -353,7 +353,7 @@ class BlocklistResolver:
             for url in config.WHITELIST_URLS:
                 for attempt in range(config.DOWNLOAD_MAX_RETRIES):
                     try:
-                        log(f"\u2b07\ufe0f Downloading whitelist {url} (attempt {attempt + 1})")
+                        log(f"\u2b07\ufe0f Téléchargement de la liste blanche {url} (Tentative {attempt + 1})")
                         response = http.request(
                             "GET",
                             url,
@@ -382,8 +382,8 @@ class BlocklistResolver:
                         break
                     except Exception as e:
                         log(
-                            f"[\u26a0\ufe0f] Loading whitelist failed {url} "
-                            f"attempt {attempt + 1}: {e}"
+                            f"[\u26a0\ufe0f] Echec de chargement de la liste blanche {url} "
+                            f"Tentative {attempt + 1}: {e}"
                         )
                         time.sleep(config.DOWNLOAD_RETRY_BASE_DELAY_SECS + attempt * 2)
 
@@ -399,12 +399,12 @@ class BlocklistResolver:
                     pass
 
             log(
-                f"\u2705 {len(self.whitelisted_domains_local)} whitelisted domains "
-                f"loaded, {len(self.whitelisted_networks)} CIDR networks."
+                f"\u2705 {len(self.whitelisted_domains_local)} domaines en liste blanche "
+                f"{len(self.whitelisted_networks)} Réseaux CIDR chargés"
             )
         except Exception as e:
             self.whitelist_download_successful = False
-            log(f"[Error] _load_whitelist: {e}\n{traceback.format_exc()}")
+            log(f"[Erreur] _load_whitelist: {e}\n{traceback.format_exc()}")
 
     # ------------------------------------------------------------------
     # Helpers
@@ -446,7 +446,7 @@ class BlocklistResolver:
 
             return False
         except Exception as e:
-            log(f"is_whitelisted error for {hostname}: {e}")
+            log(f"Erreur is_whitelisted {hostname}: {e}")
             return False
 
     def _is_blocked(self, hostname: str | None) -> bool:
@@ -462,17 +462,17 @@ class BlocklistResolver:
             # 1) Whitelist has absolute priority
             try:
                 if self.is_whitelisted(host):
-                    log(f"\u2705 [WHITELIST ALLOW] {host} matched whitelist")
+                    log(f"\u2705 [Domaine autorisé] {host}")
                     return False
             except Exception as e:
-                log(f"_is_blocked: whitelist check failed for {hostname}: {e}")
+                log(f"_is_blocked: Erreur de contrôle de la liste blanche pour {hostname}: {e}")
                 return False
 
             # 2) Direct IP handling
             try:
                 if _looks_like_ip(host):
                     if host in config.whitelisted_domains:
-                        log(f"\u2705 [WHITELIST ALLOW IP] {hostname}")
+                        log(f"\u2705 [IP autorisée] {hostname}")
                         return False
                     return bool(config.block_ip_direct)
             except Exception:
@@ -492,12 +492,12 @@ class BlocklistResolver:
                         ):
                             return True
             except Exception as e:
-                log(f"_is_blocked blocklist check error for {hostname}: {e}")
+                log(f"_is_blocked Erreur de contrôle de la liste noir pour {hostname}: {e}")
                 return False
 
             return False
         except Exception as e:
-            log(f"_is_blocked error for {hostname}: {e}")
+            log(f"_is_blocked erreur pour {hostname}: {e}")
             return False
 
     def maybe_reload_background(self) -> None:
@@ -511,4 +511,4 @@ class BlocklistResolver:
                 t1.start()
                 t2.start()
         except Exception as e:
-            log(f"maybe_reload_background error: {e}")
+            log(f"maybe_reload_background erreur: {e}")

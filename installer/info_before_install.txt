@@ -1,23 +1,26 @@
-CalmWeb - System-wide Web Protection
+Calm Web - Protection Web Système
+Licence : Licence publique générale GNU v3 (GPLv3)
 
-CalmWeb is a web proxy filter designed to protect users from ads, scams,
-and remote control software. It works system-wide with any browser.
+CalmWeb est un filtre proxy web conçu pour protéger les utilisateurs contre les publicités, les arnaques et les logiciels de contrôle à distance. Il fonctionne à l'échelle du système avec n'importe quel navigateur.
 
-Features:
-- Blocks known scam and malicious websites
-- Blocks remote desktop/assistance software (TeamViewer, AnyDesk, etc.)
-- Blocks ads and tracking domains
-- Blocks direct IP address access (prevents common scam techniques)
-- Blocks non-secure HTTP traffic by default
-- Auto-updates blocklists from trusted community sources
+⚠️ Calm Web n'est pas un anti-virus et ne garantit en aucun cas une protection totale contre le piratage ou les arnaques, et ne prétend pas le faire. Chaque utilisateur reste responsable de sa navigation et doit être conscient des risques encourus. Toutefois, CalmWeb permet de réduire certains risques en ajoutant un garde-fou : il bloque des techniques connues en se basant sur des ressources communautaires.
 
-CalmWeb runs as a local proxy on port 8080 and configures the Windows
-system proxy to route all web traffic through it.
+Fonctionnalités :
+- Bloque les sites web frauduleux et malveillants connus
+- Bloque les logiciels de bureau à distance/d'assistance (TeamViewer, AnyDesk, etc.)
+- Bloque les publicités et les domaines de suivi
+- Bloque l'accès direct à l'adresse IP (empêche les techniques d'escroquerie courantes)
+- Bloque le trafic HTTP non sécurisé par défaut
+- Mise à jour automatique des listes de blocage à partir de sources communautaires fiables
 
-Requirements:
-- Windows 10 or Windows 11
-- Administrator privileges
-- Internet connection for blocklist downloads
+Fonctionnement:
+CalmWeb fonctionne comme un proxy local sur le port 8080 et configure le proxy système Windows pour acheminer tout le trafic web via ce dernier.
 
-Repository: https://github.com/async-it/calmweb
-License: GNU General Public License v3 (GPLv3)
+Configuration requise :
+- Windows 10 ou Windows 11
+- Privilèges d'administrateur
+- Connexion Internet pour le téléchargement des listes de blocage
+
+Dépôt : https://github.com/async-it/calmweb
+
+Licence : Licence publique générale GNU v3 (GPLv3)

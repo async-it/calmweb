@@ -149,6 +149,6 @@ def write_cfg_file(
             for key in sorted(options):
                 f.write(f"{key} = {'1' if options[key] else '0'}\n")
 
-        log(f"Configuration file created: {path}")
+        log(f"Fichier de configuration créé: {path}")
     except Exception as e:
-        log(f"Error writing custom.cfg {path}: {e}")
+        log(f"Erreur de création du fichier de configuration {path}: {e}")

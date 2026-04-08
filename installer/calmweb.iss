@@ -43,7 +43,7 @@ CloseApplications=force
 CloseApplicationsFilter=calmweb.exe
 
 [Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "french";  MessagesFile: "compiler:Languages\French.isl"
 
 [Files]
 Source: "..\dist\calmweb_installer.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion

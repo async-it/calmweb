@@ -41,7 +41,7 @@ def check_for_update() -> UpdateInfo | None:
     Raises :class:`UpdateCheckError` on network/API errors so the caller can
     show appropriate UI.
     """
-    log("Checking for updates...")
+    log("Recherche de mises à jour...")
 
     http = urllib3.PoolManager(
         timeout=urllib3.Timeout(connect=10.0, read=15.0),
@@ -89,7 +89,7 @@ def check_for_update() -> UpdateInfo | None:
         raise UpdateCheckError(f"Invalid version format: {exc}") from exc
 
     if remote_ver <= local_ver:
-        log(f"Already up to date (local={__version__}, remote={remote_version_str})")
+        log(f"Application à jour (local={__version__}, remote={remote_version_str})")
         return None
 
     # Find installer asset (.exe file)
@@ -144,7 +144,7 @@ def download_installer(
 
     dest_path = Path(dest_dir) / "CalmWeb_Setup.exe"
 
-    log(f"Downloading update from {url} ...")
+    log(f"Téléchargement de la mise à jour depuis {url} ...")
 
     http = urllib3.PoolManager(
         timeout=urllib3.Timeout(connect=10.0, read=30.0),
@@ -186,7 +186,7 @@ def download_installer(
     finally:
         resp.release_conn()
 
-    log(f"Download complete: {dest_path} ({downloaded} bytes)")
+    log(f"Téléchargement terminé: {dest_path} ({downloaded} bytes)")
     return dest_path
 
 
@@ -205,7 +205,7 @@ def apply_update(installer_path: Path, silent: bool = False) -> None:
         installer_path: Path to the downloaded ``CalmWeb_Setup.exe``.
         silent: If ``True``, pass ``/SILENT`` to the installer.
     """
-    log(f"Launching installer: {installer_path}")
+    log(f"Démarrage de l'installation: {installer_path}")
 
     if not installer_path.exists():
         raise UpdateCheckError(f"Installer file not found: {installer_path}")
@@ -244,7 +244,7 @@ def apply_update(installer_path: Path, silent: bool = False) -> None:
     except Exception as exc:
         raise UpdateCheckError(f"Failed to launch installer: {exc}") from exc
 
-    log("Installer launched. Shutting down CalmWeb for update...")
+    log("Installeur démarré. Arrêt de  Calm Web pour mise à jour...")
 
     # Trigger graceful shutdown — import here to avoid circular imports
     from .tray import quit_app
