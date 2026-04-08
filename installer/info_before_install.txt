@@ -22,5 +22,5 @@ Configuration requise :
 - Connexion Internet pour le téléchargement des listes de blocage
 
 Dépôt : https://github.com/async-it/calmweb
-
-Licence : Licence publique générale GNU v3 (GPLv3)
+Une traduction non-officielle en français des conditions d'utilisation est disponible ici:
+https://tode.tuxfamily.org/?page_id=48

@@ -485,7 +485,7 @@ def _show_up_to_date() -> None:
         root.withdraw()
         messagebox.showinfo(
             "CalmWeb Update",
-            f"Application à jour!\n\nCurrent version: {__version__}",
+            f"Application à jour!\n\nVersion actuelle: {__version__}",
             parent=root,
         )
         root.destroy()

@@ -158,7 +158,7 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
             # ----------------------------------------------------------
             try:
                 if config.current_resolver and config.current_resolver.is_whitelisted(hostname):
-                    log(f"\u2705 [WHITELIST BYPASS CONNECT] {hostname}:{target_port}")
+                    log(f"\u2705 [Liste blanche] {hostname}:{target_port}")
                     self._establish_tunnel(target_host, target_port)
                     return
             except Exception as e:
@@ -189,7 +189,7 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
             # ----------------------------------------------------------
             # 4) Allow: establish tunnel
             # ----------------------------------------------------------
-            log(f"\u2705 [Proxy ALLOW HTTPS] {hostname}")
+            log(f"\u2705 [Autorisé HTTPS] {hostname}")
             self._establish_tunnel(target_host, target_port)
 
         except Exception as e:
@@ -367,14 +367,14 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
                 and config.current_resolver
                 and config.current_resolver._is_blocked(hostname)
             ):
-                log(f"\u274C [Proxy BLOCK HTTP] {hostname} ({self.command} {self.path})")
-                self.send_error(403, "Blocked by security policy")
+                log(f"\u274C [Bloqué] Sur liste noir {hostname} ({self.command} {self.path})")
+                self.send_error(403, "Traffic non sécurisé bloqué par sécurité")
                 return
 
             # 4. Check port restrictions -- 403 if non-standard port
             if config.block_http_other_ports and target_port not in self.VOIP_ALLOWED_PORTS:
-                log(f"\u274C [BLOCK other port] {target_host}:{target_port}")
-                self.send_error(403, "Non-standard port blocked by security policy")
+                log(f"\u274C [Bloqué] Port non-standard {target_host}:{target_port}")
+                self.send_error(403, "Port non-standard bloqué par sécurité")
                 return
 
             # 5. Check HTTP traffic restrictions -- 403 if plain HTTP
@@ -384,21 +384,21 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
                 and isinstance(self.path, str)
                 and self.path.startswith("http://")
             ):
-                log(f"\u274C [Proxy BLOCK HTTP Traffic] {hostname}")
+                log(f"\u274C [Bloqué] Traffic non sécurisé {hostname}")
                 self.send_error(403, "HTTP traffic blocked by security policy")
                 return
 
         # 6. Build forwarded request & 7. Forward to remote
         try:
             log(
-                f"\u2705 [Proxy ALLOW HTTP] "
+                f"\u2705 [Autorisé] "
                 f"{target_host}:{target_port} -> {self.command} {path_only}"
             )
             request_bytes = self._build_forwarded_request(
                 target_host, target_port, path_only, scheme
             )
             self._forward_to_remote(target_host, target_port, request_bytes)
-            log(f"[Proxy FORWARD DIRECT] {target_host}:{target_port} -> {self.command} {path_only}")
+            log(f"[Autorisé] Transmission directe {target_host}:{target_port} -> {self.command} {path_only}")
         except Exception as e:
             log(f"[Proxy forward error] {e}\n{traceback.format_exc()}")
             with contextlib.suppress(Exception):
@@ -486,8 +486,8 @@ def start_proxy_server(
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         config.proxy_server_thread = thread
         thread.start()
-        log(f"HTTP(S) proxy started on {bind_ip}:{port}")
+        log(f"HTTP(S) proxy Démarré sur {bind_ip}:{port}")
         return server
     except Exception as e:
-        log(f"Error starting proxy: {e}")
+        log(f"Erreur lors du démarrage du proxy: {e}")
         return None
