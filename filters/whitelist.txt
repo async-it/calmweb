@@ -10,6 +10,10 @@ msftidentity.com
 msftauth.net
 ctldl.windowsupdate.com
 
+# Apple
+appldnld.apple.com
+crl.apple.com
+
 # Certifiactes
 digicert.com
 pki.goog
