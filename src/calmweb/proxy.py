@@ -174,7 +174,7 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
                 and config.current_resolver
                 and config.current_resolver._is_blocked(hostname)
             ):
-                log(f"\u274C [Proxy BLOCK HTTPS] {hostname}")
+                log(f"\u274C [Liste noir] {hostname}")
                 self.send_error(403, "Blocked by security policy")
                 return
 
@@ -182,14 +182,14 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
             # 3) Port check: block non-standard ports when flag is on
             # ----------------------------------------------------------
             if config.block_http_other_ports and target_port not in self.VOIP_ALLOWED_PORTS:
-                log(f"\u274C [Proxy BLOCK other port] {target_host}:{target_port}")
-                self.send_error(403, "Non-standard port blocked by security policy")
+                log(f"\u274C [Port alternatif]  {target_host}:{target_port}")
+                self.send_error(403, "Blocked by security policy")
                 return
 
             # ----------------------------------------------------------
             # 4) Allow: establish tunnel
             # ----------------------------------------------------------
-            log(f"\u2705 [Autorisé HTTPS] {hostname}")
+            log(f"\u2705 [Autorisé] {hostname}")
             self._establish_tunnel(target_host, target_port)
 
         except Exception as e:
@@ -359,7 +359,7 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
             log(f"_handle_http_method whitelist check error for {hostname}: {e}")
 
         if is_whitelisted:
-            log(f"\u2705 [WHITELIST BYPASS HTTP] {hostname} ({self.command} {self.path})")
+            log(f"\u2705 [Liste blanche] {hostname} ({self.command} {self.path})")
         else:
             # 3. Check blocklist -- 403 if blocked
             if (
@@ -367,14 +367,14 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
                 and config.current_resolver
                 and config.current_resolver._is_blocked(hostname)
             ):
-                log(f"\u274C [Bloqué] Sur liste noir {hostname} ({self.command} {self.path})")
-                self.send_error(403, "Traffic non sécurisé bloqué par sécurité")
+                log(f"\u274C [Liste noir] {hostname} ({self.command} {self.path})")
+                self.send_error(403, "Blocked by security policy")
                 return
 
             # 4. Check port restrictions -- 403 if non-standard port
             if config.block_http_other_ports and target_port not in self.VOIP_ALLOWED_PORTS:
-                log(f"\u274C [Bloqué] Port non-standard {target_host}:{target_port}")
-                self.send_error(403, "Port non-standard bloqué par sécurité")
+                log(f"\u274C [Port non-standard] {target_host}:{target_port}")
+                self.send_error(403, "Blocked by security policy")
                 return
 
             # 5. Check HTTP traffic restrictions -- 403 if plain HTTP
@@ -384,21 +384,17 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
                 and isinstance(self.path, str)
                 and self.path.startswith("http://")
             ):
-                log(f"\u274C [Bloqué] Traffic non sécurisé {hostname}")
-                self.send_error(403, "HTTP traffic blocked by security policy")
+                log(f"\u274C [Traffic non sécurisé] {hostname}")
+                self.send_error(403, "Blocked by security policy")
                 return
 
         # 6. Build forwarded request & 7. Forward to remote
         try:
-            log(
-                f"\u2705 [Autorisé] "
-                f"{target_host}:{target_port} -> {self.command} {path_only}"
-            )
             request_bytes = self._build_forwarded_request(
                 target_host, target_port, path_only, scheme
             )
             self._forward_to_remote(target_host, target_port, request_bytes)
-            log(f"[Autorisé] Transmission directe {target_host}:{target_port} -> {self.command} {path_only}")
+            log(f"\u2705 [Autorisé] {target_host}:{target_port} -> {self.command} {path_only}")
         except Exception as e:
             log(f"[Proxy forward error] {e}\n{traceback.format_exc()}")
             with contextlib.suppress(Exception):
@@ -452,7 +448,7 @@ class LimitedThreadingHTTPServer(ThreadingHTTPServer):
                 request.shutdown(socket.SHUT_RDWR)
             with contextlib.suppress(Exception):
                 request.close()
-            log("\u274c Too many active connections, request refused.")
+            log("\u274c Trop de connexions actives")
             return
         return super().process_request(request, client_address)
 
