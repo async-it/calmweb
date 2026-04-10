@@ -13,7 +13,7 @@ log_buffer: deque[str] = deque(maxlen=1000)
 _LOG_LOCK = threading.Lock()
 
 def log(msg: Any) -> None:
-    """Thread-safe log to console and in-memory buffer."""
+    """Thread-safe log to console and in-memory buffer with duplicate suppression."""
     try:
         timestamp = time.strftime("[%H:%M:%S]")
         try:
@@ -24,8 +24,16 @@ def log(msg: Any) -> None:
         line = f"{timestamp} {safe_msg}"
 
         with _LOG_LOCK:
+            # Check if buffer is not empty and compare the message content
+            # We strip the timestamp [HH:MM:SS] from the last line to compare only the message
+            if log_buffer:
+                last_line = log_buffer[-1]
+                # last_line[11:] removes the "[HH:MM:SS] " prefix (11 characters)
+                if last_line[11:] == safe_msg:
+                    return
+
             log_buffer.append(line)
-            # On print à l'extérieur ou à l'intérieur, mais avec suppression d'erreur
+            
             with contextlib.suppress(Exception):
                 print(line, flush=True)
 

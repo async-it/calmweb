@@ -359,7 +359,7 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
             log(f"_handle_http_method whitelist check error for {hostname}: {e}")
 
         if is_whitelisted:
-            log(f"\u2705 [Liste blanche] {hostname} ({self.command} {self.path})")
+            log(f"\u2705 [Liste blanche] {hostname}")
         else:
             # 3. Check blocklist -- 403 if blocked
             if (
@@ -394,7 +394,7 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
                 target_host, target_port, path_only, scheme
             )
             self._forward_to_remote(target_host, target_port, request_bytes)
-            log(f"\u2705 [Autorisé] {target_host}:{target_port} -> {self.command} {path_only}")
+            log(f"\u2705 [Autorisé] {target_host}:{target_port}")
         except Exception as e:
             log(f"[Proxy forward error] {e}\n{traceback.format_exc()}")
             with contextlib.suppress(Exception):
