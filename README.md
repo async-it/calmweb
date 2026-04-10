@@ -16,7 +16,7 @@ Installé au niveau du système, il protège tous les utilisateurs et navigateur
 Toutefois, CalmWeb permet de réduire certains risques en ajoutant un garde-fou : il bloque des techniques connues en se basant sur des ressources communautaires.
 
 ### Installation
-Télécharger la dernière version de Calm Web pour Windows uniquement [ICI](https://github.com/async-it/calmweb/releases/latest)
+Télécharger la dernière version de Calm Web pour Windows uniquement [TELECHARGEMENT](https://github.com/async-it/calmweb/releases/latest)  
 Executer le fichier téléchargé et suivre les indications  
 Calm Web Démarre dans la barre de tâches (il peut être nécéssaire de cliquer sur <img width="32" height="27" alt="image" src="https://github.com/user-attachments/assets/20bafe23-b3ca-411e-8706-922b123859b2" /> situé en bas à droite)
 )  
