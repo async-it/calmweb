@@ -9,6 +9,7 @@ msecnd.net
 msftidentity.com
 msftauth.net
 ctldl.windowsupdate.com
+ipv6.msftncsi.com
 
 # Apple
 appldnld.apple.com
