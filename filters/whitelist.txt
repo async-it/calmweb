@@ -18,6 +18,7 @@ crl.apple.com
 digicert.com
 pki.goog
 lencr.org
+ssl.com
 
 # User Experience
 ## This domain appears useful for sharing but is in the URLHaus list.
