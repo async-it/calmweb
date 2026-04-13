@@ -9,6 +9,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import ctypes
+import winreg
 import socket
 import subprocess
 from typing import Any
@@ -130,10 +131,17 @@ def add_firewall_rule(target_file: str) -> None:
 # System proxy
 # ===================================================================
 
+def refresh_internet_settings():
+    INTERNET_OPTION_SETTINGS_CHANGED = 39
+    INTERNET_OPTION_REFRESH = 37
+    log("Actualisation des paramètres réseaux")
+    ctypes.windll.Wininet.InternetSetOptionW(0, INTERNET_OPTION_SETTINGS_CHANGED, 0, 0)
+    ctypes.windll.Wininet.InternetSetOptionW(0, INTERNET_OPTION_REFRESH, 0, 0)
 
 def _set_registry_proxy(proxy_enable: int, proxy_server: str) -> None:
-    """Write ProxyEnable / ProxyServer to the Windows Internet Settings registry key."""
-    import winreg
+    """Write ProxyEnable / ProxyServer / ProxyOverride and apply changes immediately."""
+    
+    proxy_override = "<local>;127.0.0.1;*.local;10.*;192.168.*;172.16.*"
 
     key = winreg.OpenKey(
         winreg.HKEY_CURRENT_USER,
@@ -141,10 +149,14 @@ def _set_registry_proxy(proxy_enable: int, proxy_server: str) -> None:
         0,
         winreg.KEY_SET_VALUE,
     )
-    winreg.SetValueEx(key, "ProxyEnable", 0, winreg.REG_DWORD, proxy_enable)
-    winreg.SetValueEx(key, "ProxyServer", 0, winreg.REG_SZ, proxy_server)
-    winreg.CloseKey(key)
 
+    try:
+        winreg.SetValueEx(key, "ProxyEnable", 0, winreg.REG_DWORD, proxy_enable)
+        winreg.SetValueEx(key, "ProxyServer", 0, winreg.REG_SZ, proxy_server)
+        winreg.SetValueEx(key, "ProxyOverride", 0, winreg.REG_SZ, proxy_override)
+
+    finally:
+        winreg.CloseKey(key)
 
 def enable_proxy(
     host: str = "127.0.0.1",
@@ -160,6 +172,7 @@ def enable_proxy(
     try:
         try:
             _set_registry_proxy(1, proxy_str)
+            refresh_internet_settings()
         except Exception as e:
             log(f"enable_proxy: registry write failed: {e}")
 
@@ -187,6 +200,7 @@ def disable_proxy() -> None:
         # phase persist until the user or a future run clears them.
         try:
             _set_registry_proxy(0, "")
+            refresh_internet_settings()
         except Exception as e:
             log(f"disable_proxy: registry clear failed: {e}")
         log("Proxy réinitialisé")
