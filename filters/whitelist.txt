@@ -1,5 +1,9 @@
 # Those domains are allowed to ensure good functionality of the client
 
+# Google
+## Got listed in a blacklist on the 29.06.2026
+google.com
+
 # Microsoft
 ## Updates and known usefull services
 data.microsoft.com
