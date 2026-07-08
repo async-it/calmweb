@@ -3,6 +3,8 @@
 # Google
 ## Got listed in a blacklist on the 29.06.2026
 google.com
+## Youtub thumbnails
+ytimg.com
 
 # Microsoft
 ## Updates and known usefull services
