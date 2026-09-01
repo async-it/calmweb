@@ -41,6 +41,10 @@ storage.googleapis.com
 ## Ensure some websites display correctly
 cdn.jsdelivr.net
 
+# Discord
+## This domain is needed to allow audio traffic
+discord.media
+
 # Calm Web
 ## Domains needed to access Calm Web ressources :)
 github.com
