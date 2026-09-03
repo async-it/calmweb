@@ -21,7 +21,7 @@ ipv6.msftncsi.com
 appldnld.apple.com
 crl.apple.com
 
-# Certifiactes
+# Certificates
 digicert.com
 pki.goog
 lencr.org
