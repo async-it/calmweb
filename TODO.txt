@@ -1,0 +1,30 @@
+exclure programme? ou ajouter des domaines a une liste d'exclusion
+
+--- fait ---
+elevation demandee a un compte qui ne peut pas l'utiliser
+  -> is_admin() ne dit que si le *processus* est eleve. Sur un compte
+     standard, l'UAC demande les identifiants d'un *autre* compte: soit
+     personne ne peut repondre, soit la copie elevee tourne sous le compte
+     admin et ecrit le proxy dans SON HKCU -- CalmWeb se dit demarre et le
+     proxy de la session ouverte n'est jamais touche.
+     can_elevate_in_place() lit maintenant TokenElevationType: seul un
+     administrateur a jeton filtre (LIMITED) recoit la demande. Un compte
+     standard demarre sans elevation et configure le proxy pour lui-meme.
+enable_proxy annoncait un succes qu'il n'avait pas verifie
+  -> relecture de ProxyEnable/ProxyServer apres ecriture (system_proxy_state),
+     enable_proxy renvoie un booleen et journalise le vrai etat.
+  -> le watchdog (_system_proxy_check) verifie aussi le reglage systeme toutes
+     les 15 s et le repose s'il a disparu (politique, VPN, autre outil).
+le proxy n'etait pas coupe proprement lors d'une mise a jour
+  -> l'installeur (CloseApplications=force) tuait calmweb.exe avant que
+     quit_app ait fini son menage, le proxy systeme restait actif dans le
+     registre. apply_update fait maintenant le menage AVANT de lancer
+     l'installeur (tray.release_system_state), et le restaure si l'UAC est
+     refuse. Filet de securite ajoute dans calmweb.iss (CurStepChanged).
+editer les listes sources directement (onglet Listes + [BLOCK_SOURCES] / [WHITELIST_SOURCES])
+page de message quand une URL est bloquee en https
+  -> impossible sans MITM: un CONNECT bloque ne peut pas porter de page, le
+     navigateur jette le corps du 403. Remplace par une notification systeme
+     (config.notify_on_block, src/calmweb/notify.py).
+option "forcer le repli de HTTP/3 (QUIC)" supprimee
+  -> l'ancienne regle pare-feu est retiree au demarrage (remove_quic_policy)

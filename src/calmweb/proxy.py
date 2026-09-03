@@ -945,6 +945,37 @@ def _health_check_once(bind_ip: str, port: int, failures: int) -> int:
     return failures
 
 
+def _system_proxy_check(bind_ip: str, port: int) -> None:
+    """Put the Windows proxy setting back when it has gone out from under us.
+
+    A listening socket is only half of the protection: nothing reaches it
+    unless Windows is still pointing at it.  That registry value is not
+    CalmWeb's alone -- a policy refresh, another proxy tool, a VPN client or a
+    hand edit in the Windows settings can clear it -- and until now nothing
+    would notice.  The tray still said "protection on" while the traffic went
+    straight out unfiltered.
+
+    Silent while everything agrees; one line and a system event when it does
+    not, so the Système tab records the repair.
+    """
+    if not config.block_enabled or config.update_in_progress:
+        return
+
+    from .platform.windows import (  # noqa: PLC0415
+        enable_proxy,
+        is_windows,
+        system_proxy_is_active,
+    )
+
+    if not is_windows() or system_proxy_is_active(bind_ip, port):
+        return
+
+    log("[⚠️] Le proxy système n'est plus actif alors que la protection l'est; "
+        "reconfiguration.")
+    stats.record("system", detail="Proxy système désactivé — reconfiguration")
+    enable_proxy(bind_ip, port)
+
+
 def _health_check_loop(bind_ip: str, port: int) -> None:
     """Probe the listening port until shutdown."""
     failures = 0
@@ -959,6 +990,10 @@ def _health_check_loop(bind_ip: str, port: int) -> None:
         try:
             failures = _health_check_once(bind_ip, port, failures)
         except Exception as e:  # the watchdog must never be the thing that dies
+            log(f"[Proxy healthcheck error] {e}")
+        try:
+            _system_proxy_check(bind_ip, port)
+        except Exception as e:
             log(f"[Proxy healthcheck error] {e}")
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import ctypes
+import os
 import socket
 import subprocess
 import sys
@@ -402,6 +403,111 @@ NO_ELEVATE_FLAG: str = "--no-elevate"
 #: answered with "no" arrives as this one -- an answer, not an error.
 _SE_ERR_ACCESSDENIED: int = 5
 
+#: ``TOKEN_QUERY`` and the ``TokenElevationType`` information class, so the
+#: token can be asked what kind of account it belongs to.
+_TOKEN_QUERY: int = 0x0008
+_TOKEN_ELEVATION_TYPE: int = 18
+
+#: The three answers ``TokenElevationType`` can give.
+#:
+#: * ``DEFAULT`` -- no split token: either UAC is off, or this is a standard
+#:   account that has no administrator token to be split from.
+#: * ``FULL`` -- this process is already running elevated.
+#: * ``LIMITED`` -- an administrator account running with the filtered token:
+#:   UAC can hand back the full one, and the elevated process is *this same
+#:   user*.
+_ELEVATION_TYPE_DEFAULT: int = 1
+_ELEVATION_TYPE_FULL: int = 2
+_ELEVATION_TYPE_LIMITED: int = 3
+
+#: The standard-account notice is worth exactly one line per run.
+_STANDARD_ACCOUNT_LOGGED: bool = False
+
+
+def elevation_type() -> int:
+    """Return the process token's ``TOKEN_ELEVATION_TYPE``, or 0 if unknown."""
+    if not is_windows():
+        return 0
+    try:
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        advapi32 = ctypes.windll.advapi32  # type: ignore[attr-defined]
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+
+        token = ctypes.c_void_p()
+        if not advapi32.OpenProcessToken(
+            ctypes.c_void_p(kernel32.GetCurrentProcess()),
+            _TOKEN_QUERY,
+            ctypes.byref(token),
+        ):
+            return 0
+        try:
+            value = ctypes.c_uint32()
+            returned = ctypes.c_uint32()
+            ok = advapi32.GetTokenInformation(
+                token,
+                _TOKEN_ELEVATION_TYPE,
+                ctypes.byref(value),
+                ctypes.sizeof(value),
+                ctypes.byref(returned),
+            )
+            return int(value.value) if ok else 0
+        finally:
+            kernel32.CloseHandle(token)
+    except Exception as e:
+        log(f"elevation_type error: {e}")
+        return 0
+
+
+def can_elevate_in_place() -> bool:
+    """True when accepting a UAC prompt would run CalmWeb as *this same user*.
+
+    :func:`is_admin` answers a different question -- whether *this process* is
+    elevated -- and answering it alone is what put a UAC prompt in front of
+    accounts that cannot use one.  Two things go wrong when a standard account
+    is asked:
+
+    * the prompt does not ask for consent, it asks for an administrator's
+      *credentials*.  Someone has to come and type a password every single
+      start, and the answer is usually to give up on CalmWeb;
+    * if a password *is* typed, the elevated copy runs as the administrator
+      account, not as the person sitting at the machine.  The system proxy
+      lives in ``HKEY_CURRENT_USER``, so it is then written into the
+      administrator's hive: CalmWeb reports itself started, and the logged-in
+      user's Windows proxy setting is never touched.  That is exactly the
+      "started but not activated" symptom.
+
+    So the question is asked of the token instead: only an administrator
+    account running with a filtered token (``LIMITED``) can be elevated in
+    place.  Anything else -- a standard account, or an API that will not
+    answer -- means no prompt, and CalmWeb runs unprivileged, which costs only
+    the loopback exemptions.
+    """
+    if not is_windows():
+        return False
+    if is_admin():
+        return True
+
+    # DEFAULT with a non-elevated token means a standard account (an
+    # administrator with UAC off would have been caught by is_admin above),
+    # and 0 means the token would not answer.  Neither is worth a prompt.
+    return elevation_type() in (_ELEVATION_TYPE_LIMITED, _ELEVATION_TYPE_FULL)
+
+
+def _log_standard_account_once() -> None:
+    """Say once per run why the loopback exemptions are being skipped."""
+    global _STANDARD_ACCOUNT_LOGGED
+    if _STANDARD_ACCOUNT_LOGGED:
+        return
+    _STANDARD_ACCOUNT_LOGGED = True
+    message = "Compte sans droits administrateur: démarrage sans élévation"
+    log(
+        "Ce compte ne peut pas être élevé: CalmWeb démarre sans privilèges et "
+        "configure le proxy pour cet utilisateur. Les exemptions loopback "
+        "(nouvel Outlook, nouveau Teams) demandent un administrateur et "
+        "peuvent être posées une fois pour toutes depuis un compte qui en a."
+    )
+    stats.record("system", detail=message)
+
 
 def elevation_would_help() -> bool:
     """True when running elevated would let CalmWeb do something it cannot now.
@@ -411,8 +517,17 @@ def elevation_would_help() -> bool:
     how people learn to click through UAC prompts.  So the question stops being
     asked the moment it stops mattering, and an unprivileged start is normal
     and silent once the exemptions are in place.
+
+    It also stops being asked when the account could not answer it usefully:
+    see :func:`can_elevate_in_place`.
     """
     if not is_windows() or is_admin():
+        return False
+    # Asked before anything else, and before the CheckNetIsolation call: on an
+    # account that cannot elevate in place there is nothing to gain and a
+    # credentials prompt to lose. See can_elevate_in_place.
+    if not can_elevate_in_place():
+        _log_standard_account_once()
         return False
     return bool(missing_loopback_exemptions())
 
@@ -512,14 +627,63 @@ def _set_registry_proxy(proxy_enable: int, proxy_server: str) -> None:
     finally:
         winreg.CloseKey(key)
 
+
+def system_proxy_state() -> tuple[bool, str]:
+    """Read the system proxy back out of the registry as ``(enabled, server)``.
+
+    Writing ``ProxyEnable`` and reporting success is not the same thing as the
+    proxy being on: the write goes to ``HKEY_CURRENT_USER``, so it lands in the
+    hive of whatever account the process runs under, and a failed or misplaced
+    write leaves no trace anywhere.  Reading it back is the only honest check.
+
+    Returns ``(False, "")`` when the values cannot be read at all.
+    """
+    if not is_windows() or winreg is None:
+        return False, ""
+    try:
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            0,
+            winreg.KEY_QUERY_VALUE,
+        )
+        try:
+            try:
+                enabled = int(winreg.QueryValueEx(key, "ProxyEnable")[0])
+            except OSError:
+                enabled = 0
+            try:
+                server = str(winreg.QueryValueEx(key, "ProxyServer")[0])
+            except OSError:
+                server = ""
+            return bool(enabled), server
+        finally:
+            winreg.CloseKey(key)
+    except Exception as e:
+        log(f"system_proxy_state error: {e}")
+        return False, ""
+
+
+def system_proxy_is_active(host: str = "127.0.0.1", port: int = 8080) -> bool:
+    """True when Windows is currently routing this user through CalmWeb."""
+    enabled, server = system_proxy_state()
+    return enabled and server.strip().lower().endswith(f"{host}:{port}")
+
+
 def enable_proxy(
     host: str = "127.0.0.1",
     port: int = 8080,
-) -> None:
-    """Configure the Windows system proxy to route through CalmWeb. Tolerates errors."""
+) -> bool:
+    """Configure the Windows system proxy to route through CalmWeb.
+
+    Returns True only when the setting is *readable back* as active.  It used
+    to return nothing and log success unconditionally, which is how CalmWeb
+    came to announce a proxy that Windows had never been told about.
+    Tolerates errors: a failure here is reported, never raised.
+    """
     if not is_windows():
         log("enable_proxy: not on Windows, skipping.")
-        return
+        return False
 
     proxy_str = f"{host}:{port}"
 
@@ -539,10 +703,25 @@ def enable_proxy(
         except Exception as e:
             log(f"enable_proxy: loopback exemption failed: {e}")
 
-        log(f"Proxy système configuré sur {proxy_str}")
+        if system_proxy_is_active(host, port):
+            log(f"Proxy système configuré sur {proxy_str}")
+            return True
+
+        enabled, server = system_proxy_state()
+        account = os.environ.get("USERNAME") or "?"
+        log(
+            "[⚠️] Le proxy système n'est pas actif après configuration "
+            f"(ProxyEnable={int(enabled)}, ProxyServer={server!r}). Les paramètres "
+            f"ont été écrits pour le compte {account!r}: si CalmWeb tourne sous un "
+            "compte autre que celui de la session ouverte, ils ne concernent pas "
+            "cette session."
+        )
+        stats.record("system", detail="Proxy système non actif après configuration")
+        return False
 
     except Exception as e:
         log(f"Error in enable_proxy: {e}")
+        return False
 
 
 def disable_proxy() -> None:

@@ -344,13 +344,17 @@ class TestElevation:
     def test_no_offer_once_the_exemptions_are_in_place(self, monkeypatch):
         """The prompt stops as soon as it stops buying anything."""
         monkeypatch.setattr(windows, "is_admin", lambda: False)
+        monkeypatch.setattr(windows, "can_elevate_in_place", lambda: True)
         listing = "\n".join(pkg.lower() for pkg in windows.LOOPBACK_EXEMPT_PACKAGES)
         monkeypatch.setattr(subprocess, "run", _FakeRun({"-s": (0, listing)}))
 
         assert windows.elevation_would_help() is False
 
     def test_offer_when_an_exemption_is_missing(self, monkeypatch):
+        """An administrator running with a filtered token is the one account
+        the prompt is for: accepting runs CalmWeb as the same user."""
         monkeypatch.setattr(windows, "is_admin", lambda: False)
+        monkeypatch.setattr(windows, "can_elevate_in_place", lambda: True)
         monkeypatch.setattr(subprocess, "run", _FakeRun({"-s": (0, "")}))
 
         assert windows.elevation_would_help() is True
@@ -419,3 +423,181 @@ class TestElevation:
         monkeypatch.setattr(windows, "relaunch_as_admin", lambda: pytest.fail("asked"))
 
         assert windows.request_elevation_if_useful() is False
+
+
+# ===================================================================
+# Elevation gate: who is even allowed to be asked
+# ===================================================================
+
+
+class _FakeToken:
+    """Just enough of advapi32/kernel32 for windows.elevation_type()."""
+
+    def __init__(self, elevation_type: int | None) -> None:
+        self.elevation_type = elevation_type
+        self.closed = False
+
+    @property
+    def windll(self):
+        outer = self
+
+        class _Advapi32:
+            @staticmethod
+            def OpenProcessToken(_process, _access, token_ref):
+                return 1 if outer.elevation_type is not None else 0
+
+            @staticmethod
+            def GetTokenInformation(_token, _cls, value_ref, _size, _returned_ref):
+                value_ref._obj.value = outer.elevation_type or 0
+                return 1
+
+        class _Kernel32:
+            GetCurrentProcess = staticmethod(lambda: -1)
+
+            @staticmethod
+            def CloseHandle(_token):
+                outer.closed = True
+                return 1
+
+        return type(
+            "_Windll", (), {"advapi32": _Advapi32(), "kernel32": _Kernel32()}
+        )()
+
+
+class _FakeCtypesToken:
+    """windows.ctypes replacement that keeps byref/sizeof working."""
+
+    def __init__(self, elevation_type: int | None) -> None:
+        import ctypes as _real
+
+        self._real = _real
+        self._token = _FakeToken(elevation_type)
+        self.windll = self._token.windll
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def _token(monkeypatch, elevation_type: int | None):
+    fake = _FakeCtypesToken(elevation_type)
+    monkeypatch.setattr(windows, "ctypes", fake, raising=True)
+    return fake
+
+
+class TestCanElevateInPlace:
+    def test_an_elevated_process_needs_no_check(self, monkeypatch):
+        monkeypatch.setattr(windows, "is_admin", lambda: True)
+
+        assert windows.can_elevate_in_place() is True
+
+    def test_a_split_token_administrator_can(self, monkeypatch):
+        monkeypatch.setattr(windows, "is_admin", lambda: False)
+        _token(monkeypatch, windows._ELEVATION_TYPE_LIMITED)
+
+        assert windows.can_elevate_in_place() is True
+
+    def test_a_standard_account_cannot(self, monkeypatch):
+        """No split token and no admin rights: a prompt would ask for someone
+        else's password, and the elevated copy would write the proxy into
+        someone else's hive."""
+        monkeypatch.setattr(windows, "is_admin", lambda: False)
+        _token(monkeypatch, windows._ELEVATION_TYPE_DEFAULT)
+
+        assert windows.can_elevate_in_place() is False
+
+    def test_an_unreadable_token_is_treated_as_a_standard_account(self, monkeypatch):
+        monkeypatch.setattr(windows, "is_admin", lambda: False)
+        _token(monkeypatch, None)
+
+        assert windows.can_elevate_in_place() is False
+
+    def test_a_failing_call_never_raises(self, monkeypatch):
+        monkeypatch.setattr(windows, "is_admin", lambda: False)
+
+        class _Boom:
+            @property
+            def windll(self):
+                raise OSError("advapi32 unavailable")
+
+        monkeypatch.setattr(windows, "ctypes", _Boom(), raising=True)
+
+        assert windows.elevation_type() == 0
+        assert windows.can_elevate_in_place() is False
+
+
+class TestStandardAccountIsNeverAsked:
+    def test_no_offer_on_an_account_that_cannot_elevate(self, monkeypatch):
+        monkeypatch.setattr(windows, "is_admin", lambda: False)
+        monkeypatch.setattr(windows, "can_elevate_in_place", lambda: False)
+        monkeypatch.setattr(
+            subprocess, "run", lambda *a, **k: pytest.fail("checked the exemptions")
+        )
+
+        assert windows.elevation_would_help() is False
+
+    def test_the_reason_is_recorded_once(self, monkeypatch):
+        monkeypatch.setattr(windows, "is_admin", lambda: False)
+        monkeypatch.setattr(windows, "can_elevate_in_place", lambda: False)
+        monkeypatch.setattr(windows, "_STANDARD_ACCOUNT_LOGGED", False, raising=False)
+
+        windows.elevation_would_help()
+        windows.elevation_would_help()
+
+        details = [e.detail for e in stats.events(kinds=("system",))]
+        events = [d for d in details if "administrateur" in d]
+        assert len(events) == 1
+
+    def test_nothing_is_relaunched_for_a_standard_account(self, monkeypatch):
+        monkeypatch.setattr(windows, "is_admin", lambda: False)
+        monkeypatch.setattr(windows, "can_elevate_in_place", lambda: False)
+        monkeypatch.setattr(sys, "argv", ["calmweb.exe"])
+        monkeypatch.setattr(
+            windows, "relaunch_as_admin", lambda: pytest.fail("asked a standard user")
+        )
+
+        assert windows.request_elevation_if_useful() is False
+
+
+# ===================================================================
+# The proxy is only on when Windows says it is
+# ===================================================================
+
+
+class TestSystemProxyReadback:
+    def test_enable_proxy_reports_success_only_when_readable_back(self, monkeypatch):
+        monkeypatch.setattr(windows, "_set_registry_proxy", lambda *_: None)
+        monkeypatch.setattr(windows, "refresh_internet_settings", lambda: None)
+        monkeypatch.setattr(windows, "apply_loopback_exemptions", lambda: True)
+        monkeypatch.setattr(windows, "system_proxy_state", lambda: (True, "127.0.0.1:8080"))
+
+        assert windows.enable_proxy("127.0.0.1", 8080) is True
+
+    def test_a_write_that_did_not_take_is_reported(self, monkeypatch):
+        """The old code logged success unconditionally -- this is the bug where
+        CalmWeb announced a proxy Windows had never been told about."""
+        monkeypatch.setattr(windows, "_set_registry_proxy", lambda *_: None)
+        monkeypatch.setattr(windows, "refresh_internet_settings", lambda: None)
+        monkeypatch.setattr(windows, "apply_loopback_exemptions", lambda: True)
+        monkeypatch.setattr(windows, "system_proxy_state", lambda: (False, ""))
+
+        assert windows.enable_proxy("127.0.0.1", 8080) is False
+        details = [e.detail for e in stats.events(kinds=("system",))]
+        assert any("non actif" in d for d in details)
+
+    def test_another_proxy_in_the_registry_is_not_ours(self, monkeypatch):
+        monkeypatch.setattr(
+            windows, "system_proxy_state", lambda: (True, "proxy.corp.local:3128")
+        )
+
+        assert windows.system_proxy_is_active("127.0.0.1", 8080) is False
+
+    def test_a_registry_write_failure_never_raises(self, monkeypatch):
+        def explode(*_a, **_k):
+            raise OSError("access denied")
+
+        monkeypatch.setattr(windows, "_set_registry_proxy", explode)
+        monkeypatch.setattr(windows, "refresh_internet_settings", lambda: None)
+        monkeypatch.setattr(windows, "apply_loopback_exemptions", lambda: True)
+        monkeypatch.setattr(windows, "system_proxy_state", lambda: (False, ""))
+
+        assert windows.enable_proxy("127.0.0.1", 8080) is False

@@ -207,3 +207,88 @@ def test_idle_tunnel_closes_on_elapsed_time_not_on_tick_count(monkeypatch):
         for sock in (left, right):
             with contextlib.suppress(OSError):
                 sock.close()
+
+
+# ===================================================================
+# The system proxy setting is watched too
+# ===================================================================
+
+
+class _FakeWindows:
+    """Stands in for calmweb.platform.windows inside _system_proxy_check."""
+
+    def __init__(self, active: bool, *, windows: bool = True) -> None:
+        self._active = active
+        self._windows = windows
+        self.enabled: list[tuple[str, int]] = []
+
+    def is_windows(self) -> bool:
+        return self._windows
+
+    def system_proxy_is_active(self, host: str, port: int) -> bool:
+        return self._active
+
+    def enable_proxy(self, host: str = "127.0.0.1", port: int = 8080) -> bool:
+        self.enabled.append((host, port))
+        self._active = True
+        return True
+
+
+@pytest.fixture
+def _fake_windows(monkeypatch):
+    """Install a fake platform.windows the local import will pick up."""
+
+    def _install(active: bool, **kwargs):
+        fake = _FakeWindows(active, **kwargs)
+        import calmweb.platform.windows as real  # noqa: PLC0415
+
+        for name in ("is_windows", "system_proxy_is_active", "enable_proxy"):
+            monkeypatch.setattr(real, name, getattr(fake, name))
+        return fake
+
+    return _install
+
+
+def test_a_proxy_setting_that_went_away_is_put_back(_fake_windows, monkeypatch):
+    """A listening socket is only half the protection: nothing reaches it if
+    Windows has stopped pointing at it."""
+    monkeypatch.setattr(config, "block_enabled", True)
+    monkeypatch.setattr(config, "update_in_progress", False)
+    fake = _fake_windows(active=False)
+
+    proxy._system_proxy_check("127.0.0.1", 8080)
+
+    assert fake.enabled == [("127.0.0.1", 8080)]
+    details = [e.detail for e in stats.events(kinds=("system",))]
+    assert any("désactivé" in d for d in details)
+
+
+def test_nothing_happens_while_the_setting_is_intact(_fake_windows, monkeypatch):
+    monkeypatch.setattr(config, "block_enabled", True)
+    monkeypatch.setattr(config, "update_in_progress", False)
+    fake = _fake_windows(active=True)
+
+    proxy._system_proxy_check("127.0.0.1", 8080)
+
+    assert fake.enabled == []
+    assert stats.events(kinds=("system",)) == []
+
+
+def test_protection_off_means_the_proxy_is_meant_to_be_off(_fake_windows, monkeypatch):
+    monkeypatch.setattr(config, "block_enabled", False)
+    fake = _fake_windows(active=False)
+
+    proxy._system_proxy_check("127.0.0.1", 8080)
+
+    assert fake.enabled == []
+
+
+def test_an_update_in_progress_is_left_alone(_fake_windows, monkeypatch):
+    """The proxy is down on purpose while the installer takes over."""
+    monkeypatch.setattr(config, "block_enabled", True)
+    monkeypatch.setattr(config, "update_in_progress", True)
+    fake = _fake_windows(active=False)
+
+    proxy._system_proxy_check("127.0.0.1", 8080)
+
+    assert fake.enabled == []

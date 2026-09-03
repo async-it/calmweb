@@ -204,7 +204,14 @@ allow_revocation_http: bool = True
 # packaged Microsoft applications -- the new Outlook among them -- have no
 # network at all while the proxy is on. CalmWeb offers to restart elevated
 # when that is missing, and starts unprivileged when the offer is declined.
-# Set to 0 for an account that can never elevate, so the prompt stops coming.
+#
+# An account that cannot elevate in place is never asked in the first place:
+# CalmWeb reads the elevation type off its own token, and only an
+# administrator running with a filtered token gets the prompt (see
+# platform.windows.can_elevate_in_place). Setting this to 0 is therefore no
+# longer needed on a standard account; it stays as a way to refuse the
+# question outright on a machine where even an administrator should not see
+# it.
 ask_elevation: bool = True
 
 # A blocked CONNECT cannot show a page -- the client wants a TLS tunnel, not
