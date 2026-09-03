@@ -6,7 +6,9 @@ All HTTP calls are mocked — no real network traffic.
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
+import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +17,7 @@ import pytest
 from calmweb.updater import (
     UpdateCheckError,
     UpdateInfo,
+    apply_update,
     check_for_update,
     download_installer,
 )
@@ -356,3 +359,78 @@ class TestUpdateInfo:
         a = UpdateInfo("2.0.0", "url", "notes", "page", "name", 100)
         b = UpdateInfo("3.0.0", "url", "notes", "page", "name", 100)
         assert a != b
+
+
+class TestApplyUpdate:
+    """The handover to the update installer.
+
+    ``CloseApplications=force`` in the Inno Setup script means Setup
+    terminates CalmWeb as soon as it starts, so the system proxy has to be
+    gone *before* the installer is launched, not after.
+    """
+
+    @staticmethod
+    def _fake_tray(calls: list[str]) -> types.ModuleType:
+        """A stand-in for ``calmweb.tray``.
+
+        The real module imports pystray, which needs a display, so it cannot
+        be imported on a build machine -- and these tests are about call
+        order, not about what the tray does.
+        """
+        module = types.ModuleType("calmweb.tray")
+        module.release_system_state = lambda: calls.append("release")  # type: ignore[attr-defined]
+        module.restore_system_state = lambda: calls.append("restore")  # type: ignore[attr-defined]
+        module.quit_app = lambda: calls.append("quit")  # type: ignore[attr-defined]
+        return module
+
+    @staticmethod
+    def _installer(tmpdir: str) -> Path:
+        path = Path(tmpdir) / "CalmWeb_Setup.exe"
+        path.write_bytes(b"stub")
+        return path
+
+    def test_missing_installer_raises(self) -> None:
+        """A missing file is refused before anything is touched."""
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            pytest.raises(UpdateCheckError, match="not found"),
+        ):
+            apply_update(Path(tmpdir) / "nope.exe")
+
+    def test_proxy_is_released_before_the_installer_starts(self) -> None:
+        """Cleanup first, launch second, quit last."""
+        calls: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            installer = self._installer(tmpdir)
+            with (
+                patch.dict(sys.modules, {"calmweb.tray": self._fake_tray(calls)}),
+                patch("sys.platform", "linux"),
+                patch(
+                    "subprocess.Popen",
+                    side_effect=lambda *a, **k: calls.append("launch"),
+                ),
+            ):
+                apply_update(installer)
+
+        assert calls == ["release", "launch", "quit"]
+
+    def test_proxy_is_restored_when_the_launch_fails(self) -> None:
+        """A declined UAC prompt must not leave the machine unfiltered."""
+        calls: list[str] = []
+
+        def _boom(*args: object, **kwargs: object) -> None:
+            calls.append("launch")
+            raise OSError("elevation refused")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            installer = self._installer(tmpdir)
+            with (
+                patch.dict(sys.modules, {"calmweb.tray": self._fake_tray(calls)}),
+                patch("sys.platform", "linux"),
+                patch("subprocess.Popen", side_effect=_boom),
+                pytest.raises(UpdateCheckError),
+            ):
+                apply_update(installer)
+
+        assert calls == ["release", "launch", "restore"]

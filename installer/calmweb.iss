@@ -47,7 +47,9 @@ Name: "french";  MessagesFile: "compiler:Languages\French.isl"
 
 [Files]
 Source: "..\dist\calmweb_installer.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
-Source: "..\resources\calmweb_icon.png"; DestDir: "{app}"; DestName: "calmweb.png"; Flags: ignoreversion
+Source: "..\resources\calmweb.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\resources\calmweb_active.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\resources\calmweb_icon.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\resources\calmweb_active.png"; DestDir: "{app}"; DestName: "calmweb_active.png"; Flags: ignoreversion
 Source: "scheduled_task.xml"; DestDir: "{app}"; Flags: ignoreversion; AfterInstall: PatchScheduledTaskXml
 
@@ -99,6 +101,27 @@ end;
 procedure InitializeWizard();
 begin
   WizardForm.BringToFront;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+  begin
+    { Safety net. CloseApplications=force terminates a running CalmWeb
+      outright, and a terminated process cannot undo its own system proxy:
+      the machine would be left pointing at 127.0.0.1:8080 with nothing
+      listening there. The updater now stops the proxy before starting Setup,
+      but a plain reinstall over a running copy has no such handover, so the
+      settings are cleared here too. The newly installed copy sets them again
+      when it starts.
+      Caveat: this writes the hive of whoever answered the UAC prompt, which
+      is the same user in the usual admin-approval case only. }
+    RegWriteDWordValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Internet Settings', 'ProxyEnable', 0);
+    RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Internet Settings', 'ProxyServer', '');
+    { A force-killed instance leaves its lock file behind, naming a PID that
+      Windows may since have handed to another process. }
+    DeleteFile(ExpandConstant('{userappdata}\CalmWeb\calmweb.lock'));
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

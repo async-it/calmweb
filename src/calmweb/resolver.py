@@ -11,18 +11,18 @@ import csv
 import io
 import ipaddress
 import ssl
-import requests
-import certifi
 import threading
 import time
 import traceback
 import zipfile
 from urllib.parse import urlparse
 
+import certifi
 import urllib3
 
 from . import config
 from .log import log
+from .normalize import normalize_host, normalize_whitelist_entry, parse_list_line
 
 # ------------------------------------------------------------------
 # Module-level helpers (used by both blocklist and whitelist loaders)
@@ -92,44 +92,22 @@ def _parse_csv_line(line: str) -> str | None:
             url_candidate = row[2].strip('"').strip()
             host = urlparse(url_candidate).hostname
             if host:
-                host = host.lower()
-                try:
-                    ipaddress.ip_address(host)
-                    return host
-                except ValueError:
-                    if len(host) <= 253:
-                        return host
+                return normalize_host(host)
     except Exception:
         pass
     return None
 
 
 def _parse_hosts_line(line: str) -> str | None:
-    """Parse a hosts-file or plain domain line and return the domain, or ``None``.
+    """Return the first host of a blocklist line, or ``None``.
 
-    Handles lines like ``0.0.0.0 ads.example.com``, ``127.0.0.1 ads.example.com``,
-    plain ``ads.example.com``, and strips inline ``#`` comments.
+    Every supported syntax (hosts file, plain domain, Adblock ``||domain^``,
+    dnsmasq, URL) is reduced to a standard domain or IP by
+    :func:`calmweb.normalize.parse_list_line`; this wrapper keeps the
+    single-value shape used by callers that expect one host per line.
     """
-    line = line.split("#", 1)[0].strip()
-    if not line:
-        return None
-
-    parts = line.split()
-    domain: str | None = None
-    if len(parts) == 1:
-        domain = parts[0]
-    elif len(parts) >= 2:
-        domain = parts[0] if not _looks_like_ip(parts[0]) else parts[1]
-
-    if not domain:
-        return None
-
-    domain = domain.lower().lstrip(".")
-    if not domain or len(domain) > 253:
-        return None
-    if _looks_like_ip(domain):
-        return None
-    return domain
+    hosts = parse_list_line(line)
+    return hosts[0] if hosts else None
 
 
 # ------------------------------------------------------------------
@@ -144,8 +122,13 @@ def _parse_text_blocklist(content: str, domains: set[str], cap_reached: bool) ->
     for line in content.splitlines():
         if cap_reached:
             break
-        domain = _parse_hosts_line(line)
-        if domain:
+        # CSV rows (URLHaus) carry the URL in the third column.
+        if line.startswith('"') and "," in line:
+            host = _parse_csv_line(line)
+            entries = [host] if host else []
+        else:
+            entries = parse_list_line(line)
+        for domain in entries:
             domains.add(domain)
             if len(domains) >= config.MAX_BLOCKED_DOMAINS:
                 cap_reached = True
@@ -184,10 +167,8 @@ def _parse_zip_blocklist(
                     if host:
                         domains.add(host)
                 else:
-                    # Plain text / hosts-file format
-                    domain = _parse_hosts_line(line)
-                    if domain:
-                        domains.add(domain)
+                    # Plain text / hosts-file / Adblock format
+                    domains.update(parse_list_line(line))
 
                 if len(domains) >= config.MAX_BLOCKED_DOMAINS:
                     cap_reached = True
@@ -226,32 +207,32 @@ def _parse_whitelist_entry(
 
     Returns ``(domain, None)`` for domain/IP strings,
     ``(None, network)`` for CIDR ranges, or ``(None, None)`` if invalid.
+
+    Wildcards (``*.example.com``), Adblock exception rules
+    (``@@||example.com^``) and URLs are all reduced to a bare host.
     """
-    # Wildcard *.example.com -> store example.com
-    if entry.startswith("*."):
-        domain = entry[2:].lstrip(".")
-        if domain and not _looks_like_ip(domain):
-            return domain, None
-        return None, None
+    return normalize_whitelist_entry(entry)
 
-    # CIDR or IP network
-    if "/" in entry:
-        try:
-            net = ipaddress.ip_network(entry, strict=False)
-            return None, net
-        except Exception:
-            return None, None
 
-    # Plain IP
-    if _looks_like_ip(entry):
-        return entry, None
+# ------------------------------------------------------------------
+# Startup safety pause
+# ------------------------------------------------------------------
 
-    # Plain domain
-    entry = entry.lstrip(".")
-    if entry and not _looks_like_ip(entry) and len(entry) <= 253:
-        return entry, None
+def _resume_protection_if_paused() -> None:
+    """End the protection pause caused by a missing whitelist.
 
-    return None, None
+    Called from :meth:`BlocklistResolver._load_whitelist` whenever a source
+    answers.  ``tray`` is imported here rather than at module level: it
+    imports the resolver back, and this is the only place that needs it.
+    """
+    try:
+        if not config.protection_paused_no_whitelist:
+            return
+        from .tray import resume_protection_after_whitelist  # noqa: PLC0415
+
+        resume_protection_after_whitelist()
+    except Exception as e:
+        log(f"_resume_protection_if_paused: {e}")
 
 
 # ===================================================================
@@ -261,6 +242,10 @@ def _parse_whitelist_entry(
 class BlocklistResolver:
     """Download, parse, and query blocklists / whitelists."""
 
+    #: Class-level default: instances are also built with ``__new__`` (the
+    #: lookup tests, for one), and querying must work before a load.
+    blocked_ips: set[str] = set()
+
     def __init__(
         self,
         blocklist_urls: list[str],
@@ -269,6 +254,7 @@ class BlocklistResolver:
         self.blocklist_urls: list[str] = list(blocklist_urls)
         self.reload_interval: int = max(60, int(reload_interval or 3600))
         self.blocked_domains: set[str] = set()
+        self.blocked_ips: set[str] = set()
         self.last_reload: float = 0
         self._lock = threading.Lock()
         self._loading_lock = threading.Lock()
@@ -284,6 +270,17 @@ class BlocklistResolver:
             self._load_whitelist()
         except Exception as e:
             log(f"Erreur d'initialisation de BlocklistResolver: {e}")
+
+    def set_blocklist_urls(self, urls: list[str]) -> None:
+        """Replace the sources downloaded on the next reload.
+
+        The URL list is fixed at construction so tests can pin it, but the
+        user can edit the sources at runtime.  Without this the dashboard
+        would save a new source, trigger a reload, and quietly download the
+        old list again.
+        """
+        with self._lock:
+            self.blocklist_urls = list(urls)
 
     # ------------------------------------------------------------------
     # Blocklist loading
@@ -313,12 +310,18 @@ class BlocklistResolver:
                         continue
                     cap_reached = _parse_blocklist_content(raw_data, url, domains, cap_reached)
 
+                # Standard entries only: hostnames on one side, routable IP
+                # addresses on the other, so each can be matched exactly.
+                ips = {d for d in domains if _looks_like_ip(d)}
+                names = domains - ips
+
                 # Atomic blocklist update
                 with self._lock:
-                    self.blocked_domains = domains
+                    self.blocked_domains = names
+                    self.blocked_ips = ips
                     self.last_reload = time.time()
 
-                log(f"\u2705 {len(domains)} domaines / IP mises en liste noir")
+                log(f"\u2705 {len(names)} domaines et {len(ips)} IP mis en liste noire")
 
             except Exception as e:
                 log(f"Erreur dans _load_blocklist: {e}\n{traceback.format_exc()}")
@@ -350,7 +353,7 @@ class BlocklistResolver:
             except Exception:
                 pass
 
-            for url in config.WHITELIST_URLS:
+            for url in config.whitelist_source_urls:
                 for attempt in range(config.DOWNLOAD_MAX_RETRIES):
                     try:
                         log(f"\u2b07\ufe0f Téléchargement de la liste blanche {url} (Tentative {attempt + 1})")
@@ -387,16 +390,23 @@ class BlocklistResolver:
                         )
                         time.sleep(config.DOWNLOAD_RETRY_BASE_DELAY_SECS + attempt * 2)
 
-            # Atomic update
+            # Atomic update.
+            #
+            # ``whitelisted_domains_local`` is the *effective* whitelist: the
+            # user's entries plus everything downloaded.  ``config
+            # .whitelisted_domains`` deliberately keeps holding only what the
+            # user wrote in custom.cfg -- it is what the Lists page shows and
+            # what gets saved back, so merging the downloaded list into it
+            # would bury the user's own handful of domains under a thousand
+            # others and write them all to their configuration file.
             with self._lock:
                 self.whitelisted_domains_local = new_domains
                 self.whitelisted_networks = new_networks
                 self.whitelist_download_successful = any_download_succeeded
-                try:
-                    config.whitelisted_domains.clear()
-                    config.whitelisted_domains.update(new_domains)
-                except Exception:
-                    pass
+
+            # A whitelist is what the startup safety check was waiting for.
+            if any_download_succeeded:
+                _resume_protection_if_paused()
 
             log(
                 f"\u2705 {len(self.whitelisted_domains_local)} domaines en liste blanche "
@@ -474,6 +484,9 @@ class BlocklistResolver:
                     if host in config.whitelisted_domains:
                         log(f"\u2705 [IP autorisée] {hostname}")
                         return False
+                    with self._lock:
+                        if host in self.blocked_ips:
+                            return True
                     return bool(config.block_ip_direct)
             except Exception:
                 pass
@@ -499,6 +512,110 @@ class BlocklistResolver:
         except Exception as e:
             log(f"_is_blocked erreur pour {hostname}: {e}")
             return False
+
+    # ------------------------------------------------------------------
+    # Introspection helpers (used by the dashboard)
+    # ------------------------------------------------------------------
+
+    def allow_now(self, hostname: str | None) -> bool:
+        """Add *hostname* to the live whitelist straight away.
+
+        Downloading the whitelists again takes a few seconds; this makes the
+        "allow this site" action take effect on the very next request, and
+        the following reload simply confirms it.
+        """
+        try:
+            host = (hostname or "").strip().lower().rstrip(".").lstrip(".")
+            if not host:
+                return False
+            with self._lock:
+                self.whitelisted_domains_local.add(host)
+            log(f"✅ [Liste blanche] {host} autorisé immédiatement")
+            return True
+        except Exception as e:
+            log(f"allow_now({hostname}) error: {e}")
+            return False
+
+    def counts(self) -> dict[str, int | float]:
+        """Return list sizes and the timestamp of the last successful reload."""
+        with self._lock:
+            return {
+                "blocked": len(self.blocked_domains) + len(self.blocked_ips),
+                "blocked_ips": len(self.blocked_ips),
+                "manual": len(config.manual_blocked_domains),
+                "whitelist": len(self.whitelisted_domains_local),
+                "networks": len(self.whitelisted_networks),
+                "last_reload": self.last_reload,
+            }
+
+    def describe(self, hostname: str | None) -> dict[str, str | bool]:
+        """Explain the verdict for *hostname*: is it blocked, and by which list?
+
+        Returns a dict with ``host``, ``blocked``, ``source`` (one of
+        ``whitelist``, ``manual``, ``downloaded``, ``ip``, ``none``) and
+        ``match`` -- the exact entry that matched, which may be a parent
+        domain.
+        """
+        result: dict[str, str | bool] = {
+            "host": "",
+            "blocked": False,
+            "source": "none",
+            "match": "",
+        }
+        try:
+            host = (hostname or "").strip().lower().rstrip(".")
+            if host.startswith("[") and host.endswith("]"):
+                host = host[1:-1]
+            if not host:
+                return result
+            result["host"] = host
+
+            # Whitelist first -- it overrides everything.
+            if _looks_like_ip(host):
+                ip_obj = ipaddress.ip_address(host)
+                with self._lock:
+                    if host in self.whitelisted_domains_local:
+                        return {**result, "source": "whitelist", "match": host}
+                    for net in self.whitelisted_networks:
+                        if ip_obj in net:
+                            return {**result, "source": "whitelist", "match": str(net)}
+                    if host in self.blocked_ips:
+                        return {
+                            **result,
+                            "blocked": True,
+                            "source": "downloaded",
+                            "match": host,
+                        }
+                if config.block_ip_direct:
+                    return {**result, "blocked": True, "source": "ip", "match": host}
+                return result
+
+            parts = host.split(".")
+            candidates = [".".join(parts[i:]) for i in range(len(parts))]
+
+            with self._lock:
+                for candidate in candidates:
+                    if candidate in self.whitelisted_domains_local:
+                        return {**result, "source": "whitelist", "match": candidate}
+                for candidate in candidates:
+                    if candidate in config.manual_blocked_domains:
+                        return {
+                            **result,
+                            "blocked": True,
+                            "source": "manual",
+                            "match": candidate,
+                        }
+                    if candidate in self.blocked_domains:
+                        return {
+                            **result,
+                            "blocked": True,
+                            "source": "downloaded",
+                            "match": candidate,
+                        }
+            return result
+        except Exception as e:
+            log(f"describe({hostname}) error: {e}")
+            return result
 
     def maybe_reload_background(self) -> None:
         """Reload blocklist and whitelist in background threads if interval elapsed."""

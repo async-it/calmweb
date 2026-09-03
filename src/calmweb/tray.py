@@ -1,7 +1,8 @@
-"""System tray icon, menu, log viewer, and UI actions for CalmWeb.
+"""System tray icon, menu, and the actions behind them.
 
-Provides the pystray menu, Tkinter log viewer, config editor launcher,
-and application quit logic.
+The tray stays intentionally small: it shows the current state at a glance,
+offers the handful of switches an advanced user may need, and opens the
+dashboard (:mod:`calmweb.gui`) for everything else.
 """
 
 from __future__ import annotations
@@ -12,20 +13,26 @@ import platform
 import subprocess
 import sys
 import threading
-import customtkinter as ctk
 import time
 import tkinter as tk
-from pathlib import Path
 from tkinter import messagebox
-from tkinter.scrolledtext import ScrolledText
 from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageDraw
 from pystray import Menu, MenuItem
 
-from . import __version__, config
-from .config_io import get_custom_cfg_path, load_custom_cfg_to_globals, write_default_custom_cfg
-from .log import log_buffer, _LOG_LOCK, log
+from . import __version__, config, stats
+from .assets import app_icon, load_image, project_root
+from .config_io import (
+    current_options,
+    get_blocklist_urls,
+    get_custom_cfg_path,
+    load_custom_cfg_to_globals,
+    save_custom_cfg,
+    write_default_custom_cfg,
+)
+from .i18n import t
+from .log import log
 from .platform.windows import disable_proxy, enable_proxy
 
 if TYPE_CHECKING:
@@ -34,81 +41,33 @@ if TYPE_CHECKING:
     from .updater import UpdateInfo
 
 
-_ICON_CACHE: dict[str, Image.Image] = {}
+#: The live tray icon, so any part of the app can refresh it.
+_ICON: Icon | None = None
+
+
+# ===================================================================
+# Icon loading
+# ===================================================================
 
 
 def _get_project_root() -> str:
     """Return project root directory (works in dev and frozen modes)."""
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
-    return str(Path(__file__).resolve().parent.parent.parent)
+    return project_root()
 
 
 def _load_tray_icon_from_file(path: str, size: int = 64) -> Image.Image | None:
-    """Load an image file and return a (*size* x *size*) RGBA PIL Image.
-
-    Handles PNG, ICO, and other PIL-supported formats.  Results are cached
-    by absolute path so repeated calls are free.
-    """
-    try:
-        abs_path = os.path.abspath(path)
-        if abs_path in _ICON_CACHE:
-            return _ICON_CACHE[abs_path]
-        if not os.path.exists(abs_path):
-            return None
-
-        img = Image.open(abs_path)
-        rgba = img.convert("RGBA")
-        if rgba.size != (size, size):
-            rgba = rgba.resize((size, size), Image.LANCZOS)
-
-        _ICON_CACHE[abs_path] = rgba
-        return rgba
-    except Exception:
-        return None
+    """Load an image file and return a (*size* x *size*) RGBA PIL Image."""
+    return load_image(path, size)
 
 
 def apply_state_icon(icon: Icon) -> None:
-    """Set tray icon according to current blocking state.
+    """Set the tray icon according to the current blocking state.
 
-    - Active blocking  -> calmweb_active.png / .ico
-    - Inactive blocking -> calmweb.png / .ico (or fallback assets)
+    Both states come from the ``.ico`` files, which carry a native 64-pixel
+    frame; the PNGs and finally the executable's own icon are fallbacks.
     """
     try:
-        root = _get_project_root()
-        meipass = getattr(sys, "_MEIPASS", None)
-
-        # Common "normal" icon candidates (used as fallback for active too)
-        # Prefer .ico (reliable RGBA transparency) over .png;
-        normal_candidates = [
-            os.path.join(root, "calmweb.ico"),
-            os.path.join(root, "resources", "calmweb.ico"),
-            os.path.join(root, "resources", "calmweb_icon.png"),
-            os.path.join(root, "calmweb.png"),
-            os.path.join(root, "resources", "calmweb.png"),
-        ]
-        if meipass:
-            normal_candidates.insert(0, os.path.join(meipass, "calmweb.ico"))
-
-        if config.block_enabled:
-            active_candidates = [
-                os.path.join(root, "calmweb_active.png"),
-                os.path.join(root, "resources", "calmweb_active.png"),
-                os.path.join(root, "calmweb_active.ico"),
-                os.path.join(root, "resources", "calmweb_active.ico"),
-            ]
-            if meipass:
-                active_candidates.insert(0, os.path.join(meipass, "calmweb_active.png"))
-                active_candidates.insert(1, os.path.join(meipass, "calmweb_active.ico"))
-            candidates = active_candidates + normal_candidates
-        else:
-            candidates = normal_candidates
-
-        icon_image = None
-        for candidate in candidates:
-            icon_image = _load_tray_icon_from_file(candidate)
-            if icon_image is not None:
-                break
+        icon_image = app_icon(active=config.block_enabled, size=64)
 
         if icon_image is None:
             exe_icon = get_exe_icon(sys.executable)
@@ -120,17 +79,8 @@ def apply_state_icon(icon: Icon) -> None:
         log(f"apply_state_icon error: {e}")
 
 
-# ===================================================================
-# Exe icon extraction (wrapper)
-# ===================================================================
-
-
 def get_exe_icon(path: str, size: tuple[int, int] = (64, 64)) -> Any:
-    """Return a PIL Image of the executable icon, or None on failure.
-
-    Delegates to :func:`calmweb.platform.windows.get_exe_icon`.
-    Returns None gracefully on non-Windows platforms.
-    """
+    """Return a PIL Image of the executable icon, or None on failure."""
     try:
         from .platform.windows import get_exe_icon as win_get_exe_icon
 
@@ -139,165 +89,49 @@ def get_exe_icon(path: str, size: tuple[int, int] = (64, 64)) -> Any:
         return None
 
 
-# ===================================================================
-# Fallback icon
-# ===================================================================
-
-
 def create_image() -> Image.Image | None:
-    """Create a generic fallback PIL Image icon when exe icon extraction fails."""
+    """Create a generic fallback icon when no asset can be loaded."""
     try:
         image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-        d = ImageDraw.Draw(image)
-        d.rectangle([(8, 16), (56, 48)], outline=(0, 0, 0))
-        d.text((18, 22), "CW", fill=(0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        draw.ellipse([(4, 4), (60, 60)], fill=(31, 154, 99, 255))
+        draw.text((19, 24), "CW", fill=(255, 255, 255, 255))
         return image
     except Exception:
         return None
 
+
 # ===================================================================
-# Log viewer (runs in a separate thread) - CustomTkinter Version
+# Dashboard shortcuts (kept as thin wrappers for backwards compatibility)
 # ===================================================================
 
-_log_thread = None
-_log_window_lock = threading.Lock()
-_log_window = None
 
-def run_log_viewer():
-    """Run the log viewer in a separate CustomTkinter instance."""
-    global _log_window
-    
-    # Configuration du thème global (Dark/Light mode automatique selon l'OS)
-    ctk.set_appearance_mode("System")
-    ctk.set_default_color_theme("blue")
-    
-    win = ctk.CTk()
-    win.title("Calm Web - Log")
-    win.geometry("780x440")
-    
-    # Force la fenêtre au premier plan à l'ouverture
-    win.lift()
-    win.attributes('-topmost', True)
-    win.after(100, lambda: win.attributes('-topmost', False))
-    
-    # Utilisation du widget texte enrichi de CustomTkinter
-    text_area = ctk.CTkTextbox(
-        win, 
-        wrap="word", 
-        font=ctk.CTkFont(family="Consolas", size=12)
-    )
-    text_area.pack(expand=True, fill="both", padx=10, pady=10)
-    
-    refresh_id = [None]
-    first_load = True
-    
-    # Stocke la référence au contexte
-    with _log_window_lock:
-        _log_window = win
+def show_dashboard(page: str = "status") -> None:
+    """Open the CalmWeb window on *page*."""
+    from .gui import show_dashboard as _show
 
-    def refresh():
-        nonlocal first_load
-        try:
-            if not win.winfo_exists():
-                return
+    _show(page)
 
-            with _LOG_LOCK:
-                content = "\n".join(list(log_buffer))
 
-            # Récupère la position du scroll pour l'auto-scroll
-            current_pos = text_area.yview()[1]
-            is_at_bottom = current_pos >= 0.95
+def show_log_window() -> None:
+    """Open the window on the activity page (legacy name)."""
+    show_dashboard("activity")
 
-            # Mise à jour du texte
-            text_area.configure(state="normal")
-            text_area.delete("1.0", ctk.END)
-            text_area.insert(ctk.END, content if content else "No logs yet.")
-            
-            # Défilement automatique
-            if first_load or is_at_bottom:
-                text_area.see(ctk.END)
-                first_load = False
-            
-            text_area.configure(state="disabled")
-            
-            # Boucle de rafraîchissement (1000 ms)
-            refresh_id[0] = win.after(1000, refresh)
-            
-        except Exception as e:
-            log(f"Refresh error: {e}")
 
-    def on_close():
-        """Arrête proprement la boucle et détruit la fenêtre."""
-        nonlocal refresh_id
-        try:
-            if refresh_id[0]:
-                win.after_cancel(refresh_id[0])
-                refresh_id[0] = None
-        except Exception:
-            pass
-        
-        try:
-            win.quit()
-        except Exception:
-            pass
-        
-        try:
-            win.destroy()
-        except Exception:
-            pass
+def run_log_viewer() -> None:
+    """Run the window in the current thread (used by ``--log-viewer``)."""
+    from .gui import _run
 
-    win.protocol("WM_DELETE_WINDOW", on_close)
-    
-    try:
-        refresh()
-        win.mainloop()
-    except Exception as e:
-        log(f"Log viewer error: {e}")
-    finally:
-        with _log_window_lock:
-            _log_window = None
+    _run("activity")
 
-def show_log_window():
-    """Show the log viewer window (create if needed, raise if exists)."""
-    global _log_thread, _log_window
-    
-    # Vérifie si la fenêtre existe déjà
-    with _log_window_lock:
-        if _log_window and _log_window.winfo_exists():
-            try:
-                # Restaure la fenêtre si elle est minimisée (Windows spécifique)
-                if _log_window.state() == "iconic":
-                    _log_window.deiconify()
-                _log_window.lift()
-                _log_window.focus()
-            except Exception:
-                pass
-            return
-    
-    # Vérifie si le thread est toujours actif
-    if _log_thread and _log_thread.is_alive():
-        try:
-            # Essaie de lever la fenêtre
-            if _log_window and _log_window.winfo_exists():
-                if _log_window.state() == "iconic":
-                    _log_window.deiconify()
-                _log_window.lift()
-                _log_window.focus()
-        except Exception:
-            pass
-        return
 
-    # Lance un nouveau thread non-daemon
-    _log_thread = threading.Thread(target=run_log_viewer, daemon=False)
-    _log_thread.start()
-        
 # ===================================================================
 # Config editor
 # ===================================================================
 
 
 def open_config_in_editor(path: str) -> None:
-    """Open custom.cfg in Notepad (Windows) or the OS default editor, and reload config after editor closes."""
+    """Open custom.cfg in a text editor and reload the config when it closes."""
     try:
         if not os.path.exists(path):
             log(f"custom.cfg missing, creating before opening: {path}")
@@ -311,22 +145,19 @@ def open_config_in_editor(path: str) -> None:
                 system_name = platform.system().lower()
 
                 if system_name == "windows":
-                    # Launch Notepad and wait
                     proc = subprocess.Popen(["notepad.exe", path])
+                elif hasattr(os, "startfile"):
+                    os.startfile(path)  # type: ignore[attr-defined]  # non-blocking
+                    log("Cannot wait for editor on this platform; reload may happen immediately.")
                 else:
-                    # Non-Windows fallback
-                    if hasattr(os, "startfile"):
-                        os.startfile(path)  # Note: startfile is non-blocking
-                        log("Cannot wait for editor on this platform; reload may happen immediately.")
-                    else:
-                        proc = subprocess.Popen(
-                            ["xdg-open", path],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                        )
+                    proc = subprocess.Popen(
+                        ["xdg-open", path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
 
                 if proc:
-                    proc.wait()  # Wait until the editor is closed
+                    proc.wait()
                     log(f"Editor closed, reloading config: {path}")
                     reload_config_action()
 
@@ -341,7 +172,7 @@ def open_config_in_editor(path: str) -> None:
 
 
 # ===================================================================
-# Tray menu actions
+# Actions
 # ===================================================================
 
 
@@ -353,27 +184,42 @@ def reload_config_action(icon: Icon | None = None, item: Any | None = None) -> N
             log(f"No custom.cfg found to reload: {cfg_path}")
             return
 
-        # Reload global variables from user config file
         load_custom_cfg_to_globals(cfg_path)
         log("Local configuration reloaded from user file.")
 
         if config.current_resolver:
-            # Launch both reloads (blocklist + whitelist) in parallel
+            # The sources may have just changed in custom.cfg; push them into
+            # the resolver before it downloads anything.
+            with contextlib.suppress(Exception):
+                config.current_resolver.set_blocklist_urls(get_blocklist_urls())
             threading.Thread(target=config.current_resolver._load_blocklist, daemon=True).start()
             threading.Thread(target=config.current_resolver._load_whitelist, daemon=True).start()
             log("Full reload of external blocklists and whitelists requested (thread).")
         else:
             log("[WARN] No active resolver for reload.")
 
+        refresh_tray()
+
     except Exception as e:
         log(f"Error reloading configuration: {e}")
 
 
-def toggle_block(icon: Icon, item: Any) -> None:
-    """Toggle blocking on/off and update the system proxy accordingly."""
-    config.block_enabled = not config.block_enabled
-    state = "enabled" if config.block_enabled else "disabled"
-    log(f"Calm Web: blocking {state}")
+def set_protection(enabled: bool, *, persist: bool = True) -> None:
+    """Enable or disable filtering and update the system proxy accordingly.
+
+    *persist* writes the new state to custom.cfg so it is still there at the
+    next launch.  It is only turned off for the automatic resume below, which
+    restores a state the user never changed.
+    """
+    config.block_enabled = bool(enabled)
+    # An explicit choice clears any automatic safety pause: the whitelist
+    # retry running in the background must never undo what was just asked for.
+    config.protection_paused_no_whitelist = False
+    log(f"Calm Web: blocking {'enabled' if config.block_enabled else 'disabled'}")
+    stats.record(
+        "system",
+        detail=t("tray.state", state=t("common.on") if config.block_enabled else t("common.off")),
+    )
     try:
         if config.block_enabled:
             enable_proxy()
@@ -381,92 +227,79 @@ def toggle_block(icon: Icon, item: Any) -> None:
             disable_proxy()
     except Exception as e:
         log(f"Error setting system proxy on toggle: {e}")
-    update_menu(icon)
-
-
-def check_for_updates(icon: Icon | None = None, item: Any | None = None) -> None:
-    """Check GitHub Releases for a newer version and offer to install it."""
-
-    def _check_in_background() -> None:
-        from .updater import (
-            UpdateCheckError,
-            apply_update,
-            check_for_update,
-        )
-
+    if persist:
         try:
-            update_info = check_for_update()
-        except UpdateCheckError as exc:
-            _show_update_error(str(exc))
+            save_custom_cfg(options=current_options())
+        except Exception as e:
+            log(f"Error saving protection state: {e}")
+    refresh_tray()
+
+
+def resume_protection_after_whitelist() -> None:
+    """Put the protection back on after a whitelist has finally downloaded.
+
+    Filtering with no whitelist blocks sites the user explicitly allowed, so
+    a failed download pauses the protection -- but the pause used to last for
+    the whole session, which is how a machine could sit unprotected all day
+    because the network was not up in the minute after the installer ran.
+    The pause is now temporary and this is what ends it.
+
+    Does nothing unless :data:`config.protection_paused_no_whitelist` is set,
+    so a protection the user switched off stays off.
+    """
+    try:
+        if not config.protection_paused_no_whitelist:
             return
-        except Exception as exc:
-            _show_update_error(f"Unexpected error: {exc}")
+        config.protection_paused_no_whitelist = False
+        if config.block_enabled:
             return
-
-        if update_info is None:
-            _show_up_to_date()
-            return
-
-        # Show update dialog and ask user
-        if _show_update_available(update_info):
-            # User said yes — download and install
-            try:
-                installer_path = _download_with_progress(update_info)
-                if installer_path:
-                    apply_update(installer_path)
-            except Exception as exc:
-                _show_update_error(f"Update failed: {exc}")
-
-    thread = threading.Thread(target=_check_in_background, daemon=True)
-    thread.start()
+        log("\u2705 Liste blanche disponible, protection r\u00e9activ\u00e9e.")
+        # Not persisted: this restores the state custom.cfg already holds.
+        set_protection(True, persist=False)
+    except Exception as e:
+        log(f"resume_protection_after_whitelist error: {e}")
 
 
-def check_for_updates_silent() -> None:
-    """Silently check for updates on startup — only prompt if an update is available."""
-
-    def _check_in_background() -> None:
-        from .updater import (
-            UpdateCheckError,
-            apply_update,
-            check_for_update,
-        )
-
-        try:
-            update_info = check_for_update()
-        except (UpdateCheckError, Exception):
-            # Silently ignore errors on startup check
-            return
-
-        if update_info is None:
-            return
-
-        # Show update dialog and ask user
-        if _show_update_available(update_info):
-            try:
-                installer_path = _download_with_progress(update_info)
-                if installer_path:
-                    apply_update(installer_path)
-            except Exception as exc:
-                _show_update_error(f"Update failed: {exc}")
-
-    thread = threading.Thread(target=_check_in_background, daemon=True)
-    thread.start()
+def toggle_block(icon: Icon | None = None, item: Any | None = None) -> None:
+    """Toggle blocking on/off (tray menu entry point)."""
+    set_protection(not config.block_enabled)
 
 
-def check_for_updates_startup() -> None:
-    """Run update check inline as an immediate startup step."""
-    from .updater import (
-        UpdateCheckError,
-        apply_update,
-        check_for_update,
-    )
+def _toggle_option(key: str) -> None:
+    """Flip a boolean option, persist it, and apply any side effect."""
+    try:
+        new_value = not bool(getattr(config, key, False))
+        setattr(config, key, new_value)
+        save_custom_cfg(options=current_options())
+        log(f"{key} = {getattr(config, key)}")
+        refresh_tray()
+    except Exception as e:
+        log(f"toggle option {key} error: {e}")
+
+
+# ===================================================================
+# Updates
+# ===================================================================
+
+
+def _run_update_flow(silent: bool) -> None:
+    """Check for a new release and, if the user agrees, install it."""
+    from .updater import UpdateCheckError, apply_update, check_for_update
 
     try:
         update_info = check_for_update()
-    except (UpdateCheckError, Exception):
+    except UpdateCheckError as exc:
+        if not silent:
+            _show_update_error(str(exc))
+        return
+    except Exception as exc:
+        if not silent:
+            _show_update_error(f"{exc}")
         return
 
     if update_info is None:
+        if not silent:
+            _show_up_to_date()
         return
 
     if _show_update_available(update_info):
@@ -475,17 +308,39 @@ def check_for_updates_startup() -> None:
             if installer_path:
                 apply_update(installer_path)
         except Exception as exc:
-            _show_update_error(f"Update failed: {exc}")
+            _show_update_error(t("update.failed", e=exc))
+
+
+def check_for_updates(icon: Icon | None = None, item: Any | None = None) -> None:
+    """Check GitHub Releases for a newer version and offer to install it."""
+    threading.Thread(target=_run_update_flow, args=(False,), daemon=True).start()
+
+
+def check_for_updates_silent() -> None:
+    """Check on startup; only prompt when an update is available."""
+    threading.Thread(target=_run_update_flow, args=(True,), daemon=True).start()
+
+
+def check_for_updates_startup() -> None:
+    """Run the update check inline as an immediate startup step."""
+    _run_update_flow(silent=True)
+
+
+def _dialog_root() -> tk.Tk:
+    root = tk.Tk()
+    root.withdraw()
+    with contextlib.suppress(Exception):
+        root.attributes("-topmost", True)
+    return root
 
 
 def _show_up_to_date() -> None:
-    """Show a dialog telling the user they're up to date."""
+    """Tell the user they are already on the latest version."""
     try:
-        root = tk.Tk()
-        root.withdraw()
+        root = _dialog_root()
         messagebox.showinfo(
-            "CalmWeb Update",
-            f"Application à jour!\n\nVersion actuelle: {__version__}",
+            t("update.title"),
+            f"{t('update.uptodate')}\n\n{t('update.current')}: {__version__}",
             parent=root,
         )
         root.destroy()
@@ -496,165 +351,319 @@ def _show_up_to_date() -> None:
 def _show_update_error(message: str) -> None:
     """Show an error dialog for update failures."""
     try:
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showerror("CalmWeb Update", message, parent=root)
+        root = _dialog_root()
+        messagebox.showerror(t("update.title"), message, parent=root)
         root.destroy()
     except Exception as exc:
         log(f"Error showing update error dialog: {exc}")
 
 
 def _show_update_available(update_info: UpdateInfo) -> bool:
-    """Show a dialog with update info and return True if user wants to update."""
+    """Show the update details and return True when the user accepts."""
     try:
-        root = tk.Tk()
-        root.withdraw()
+        root = _dialog_root()
 
-        # Truncate release notes if very long
-        notes = update_info.release_notes
+        notes = update_info.release_notes or ""
         if len(notes) > 500:
-            notes = notes[:500] + "..."
-
+            notes = notes[:500] + "…"
         size_mb = update_info.asset_size / (1024 * 1024)
 
         message = (
-            f"Une nouvelle version est disponible!\n\n"
-            f"Version actuelle: {__version__}\n"
-            f"Nouvelle version: {update_info.version}\n"
-            f"Taille du téléchargement: {size_mb:.1f} MB\n\n"
-            f"Informations:\n{notes}\n\n"
-            f"Souhaitez-vous mettre à jour?"
+            f"{t('update.available')}\n\n"
+            f"{t('update.current')}: {__version__}\n"
+            f"{t('update.new')}: {update_info.version}\n"
+            f"{t('update.size')}: {size_mb:.1f} MB\n\n"
+            f"{t('update.notes')}:\n{notes}\n\n"
+            f"{t('update.question')}"
         )
 
-        result = messagebox.askyesno("CalmWeb Update", message, parent=root)
+        result = messagebox.askyesno(t("update.title"), message, parent=root)
         root.destroy()
-        return result
+        return bool(result)
     except Exception as exc:
         log(f"Error showing update dialog: {exc}")
         return False
 
 
-def _download_with_progress(update_info: UpdateInfo) -> Path | None:
-    """Download the installer with a progress bar dialog."""
-    from .updater import UpdateCheckError, download_installer
-
-    # Create a progress window
-    root = tk.Tk()
-    root.title("CalmWeb Update")
-    root.geometry("400x120")
-    root.resizable(False, False)
-
-    # Center the window
-    root.update_idletasks()
-    x = (root.winfo_screenwidth() // 2) - 200
-    y = (root.winfo_screenheight() // 2) - 60
-    root.geometry(f"+{x}+{y}")
-
-    label = tk.Label(
-        root,
-        text=f"Downloading CalmWeb {update_info.version}...",
-    )
-    label.pack(pady=(15, 5))
-
-    # Use ttk Progressbar
+def _download_with_progress(update_info: UpdateInfo):
+    """Download the installer while showing a progress dialog."""
     from tkinter import ttk
 
-    progress_var = tk.DoubleVar(value=0)
-    progress_bar = ttk.Progressbar(
-        root, variable=progress_var, maximum=100, length=350
+    from .updater import UpdateCheckError, download_installer
+
+    root = tk.Tk()
+    root.title(t("update.title"))
+    root.geometry("420x130")
+    root.resizable(False, False)
+    root.update_idletasks()
+    root.geometry(
+        f"+{(root.winfo_screenwidth() // 2) - 210}+{(root.winfo_screenheight() // 2) - 65}"
     )
-    progress_bar.pack(pady=5, padx=25)
 
-    percent_label = tk.Label(root, text="0%")
-    percent_label.pack(pady=(0, 10))
+    tk.Label(root, text=t("update.downloading", v=update_info.version)).pack(pady=(18, 6))
+    progress_var = tk.DoubleVar(value=0)
+    ttk.Progressbar(root, variable=progress_var, maximum=100, length=360).pack(pady=4, padx=28)
+    percent_label = tk.Label(root, text="0 %")
+    percent_label.pack(pady=(0, 12))
 
-    result_path: list[Path | None] = [None]
+    result_path: list[Any] = [None]
     error_msg: list[str | None] = [None]
-
-    def progress_callback(downloaded: int, total: int) -> None:
-        """Update the progress bar from the download thread."""
-        if total > 0:
-            pct = (downloaded / total) * 100
-            with contextlib.suppress(Exception):
-                root.after(0, lambda p=pct: _update_progress(p))
 
     def _update_progress(pct: float) -> None:
         with contextlib.suppress(Exception):
             progress_var.set(pct)
-            percent_label.config(text=f"{pct:.0f}%")
-            root.update_idletasks()
+            percent_label.config(text=f"{pct:.0f} %")
+
+    def progress_callback(downloaded: int, total: int) -> None:
+        if total > 0:
+            with contextlib.suppress(Exception):
+                root.after(0, _update_progress, (downloaded / total) * 100)
 
     def _do_download() -> None:
         try:
-            path = download_installer(
-                update_info.download_url,
-                progress_callback=progress_callback,
+            result_path[0] = download_installer(
+                update_info.download_url, progress_callback=progress_callback
             )
-            result_path[0] = path
         except (UpdateCheckError, Exception) as exc:
             error_msg[0] = str(exc)
         finally:
             with contextlib.suppress(Exception):
                 root.after(0, root.destroy)
 
-    dl_thread = threading.Thread(target=_do_download, daemon=True)
-    dl_thread.start()
-
+    thread = threading.Thread(target=_do_download, daemon=True)
+    thread.start()
     root.mainloop()
-    dl_thread.join(timeout=5)
+    thread.join(timeout=5)
 
     if error_msg[0]:
-        _show_update_error(f"Download failed: {error_msg[0]}")
+        _show_update_error(t("update.failed", e=error_msg[0]))
         return None
-
     return result_path[0]
 
 
-def update_menu(icon: Icon) -> None:
-    """Rebuild the systray menu. Wraps callbacks to prevent unhandled exceptions."""
-    try:
-        apply_state_icon(icon)
-        icon.menu = Menu(
-            MenuItem(
-                f"Calm Web v{__version__}",
-                lambda: None,
-                enabled=False,
-            ),
-            MenuItem(
-                f"Filtrage: {'✓ Activé' if config.block_enabled else '✕ Désactivé'}",
-                lambda: None,
-                enabled=False,
-            ),
-            MenuItem(
-                "✕ Désactiver le filtre" if config.block_enabled else "✓ Activer le filtre",
-                toggle_block,
-            ),
-            MenuItem(
-                "Configuration",
-                Menu(
-                    MenuItem(
-                        "Editer",
-                        lambda icon, item: threading.Thread(
-                            target=open_config_in_editor,
-                            args=(get_custom_cfg_path(config.INSTALL_DIR),),
-                            daemon=True,
-                        ).start(),
-                    ),
-                    MenuItem("Recharger listes et configuration", reload_config_action),
+# ===================================================================
+# Menu
+# ===================================================================
+
+
+def _state_text() -> str:
+    return t("tray.state", state=t("common.on") if config.block_enabled else t("common.off"))
+
+
+def _counter_text() -> str:
+    snapshot = stats.snapshot()
+    return t("tray.counters", b=snapshot["blocked"], a=snapshot["allowed"])
+
+
+def _option_item(key: str) -> MenuItem:
+    """A checkable menu entry bound to a boolean option in :mod:`config`."""
+    return MenuItem(
+        lambda item: t(f"settings.{key}"),
+        lambda icon, item: _toggle_option(key),
+        checked=lambda item: bool(getattr(config, key, False)),
+    )
+
+
+def build_menu() -> Menu:
+    """Build the tray menu. Texts are callables so they follow the language."""
+    return Menu(
+        MenuItem(
+            lambda item: t("tray.open"),
+            lambda icon, item: show_dashboard("status"),
+            default=True,
+        ),
+        Menu.SEPARATOR,
+        MenuItem(lambda item: _state_text(), None, enabled=False),
+        MenuItem(lambda item: _counter_text(), None, enabled=False),
+        Menu.SEPARATOR,
+        MenuItem(
+            lambda item: t("status.disable") if config.block_enabled else t("status.enable"),
+            toggle_block,
+        ),
+        MenuItem(
+            lambda item: t("tray.settings"),
+            Menu(
+                _option_item("block_http_traffic"),
+                _option_item("block_ip_direct"),
+                _option_item("block_http_other_ports"),
+                _option_item("notify_on_block"),
+                Menu.SEPARATOR,
+                MenuItem(
+                    lambda item: t("tray.edit"),
+                    lambda icon, item: threading.Thread(
+                        target=open_config_in_editor,
+                        args=(get_custom_cfg_path(config.INSTALL_DIR),),
+                        daemon=True,
+                    ).start(),
+                ),
+                MenuItem(
+                    lambda item: t("tray.reload"),
+                    lambda icon, item: threading.Thread(
+                        target=reload_config_action, daemon=True
+                    ).start(),
                 ),
             ),
-            MenuItem(
-                "Afficher l'activité",
-                lambda: threading.Thread(target=show_log_window, daemon=True).start(),
-            ),
-            MenuItem("Rechercher une mise à jour", check_for_updates),
-            MenuItem("Quitter", quit_app),
-        )
-        # pystray may raise if the icon has been stopped; ignore
+        ),
+        MenuItem(
+            lambda item: t("tray.activity"),
+            lambda icon, item: show_dashboard("activity"),
+        ),
+        Menu.SEPARATOR,
+        MenuItem(lambda item: t("tray.update"), check_for_updates),
+        MenuItem(lambda item: t("tray.quit"), quit_app),
+    )
+
+
+def update_menu(icon: Icon | None = None) -> None:
+    """Attach (or refresh) the tray menu, icon and tooltip."""
+    global _ICON
+    try:
+        icon = icon or _ICON
+        if icon is None:
+            return
+        _ICON = icon
+
+        apply_state_icon(icon)
+        icon.menu = build_menu()
+
+        snapshot = stats.snapshot()
+        with contextlib.suppress(Exception):
+            icon.title = (
+                t("tray.tooltip.on", b=snapshot["blocked"])
+                if config.block_enabled
+                else t("tray.tooltip.off")
+            )
+
         with contextlib.suppress(Exception):
             icon.update_menu()
     except Exception as e:
         log(f"update_menu error: {e}")
+
+
+def refresh_tray() -> None:
+    """Refresh the icon, tooltip and menu after a state change."""
+    update_menu(_ICON)
+
+
+def show_notification(title: str, message: str) -> bool:
+    """Show a desktop notification from the tray icon.
+
+    Returns False when there is nothing to show it from -- no tray icon yet,
+    or a backend without notification support (pystray exposes that as
+    ``HAS_NOTIFICATION``).  Callers treat that as "not available", never as an
+    error: a missing notification must not disturb the proxy.
+    """
+    icon = _ICON
+    if icon is None:
+        return False
+    try:
+        if not getattr(icon, "HAS_NOTIFICATION", False):
+            return False
+        icon.notify(message, title)
+        return True
+    except Exception as e:
+        log(f"show_notification error: {e}")
+        return False
+
+
+# ===================================================================
+# Shutdown
+# ===================================================================
+
+#: Guards the release/restore pair below: the tray thread, the update thread
+#: and a signal handler can all reach it.
+_SYSTEM_STATE_LOCK = threading.RLock()
+_SYSTEM_STATE_RELEASED = threading.Event()
+
+
+def release_system_state() -> None:
+    """Put the machine back the way CalmWeb found it, without quitting.
+
+    Everything here touches the *system*, not this process: the WinINET proxy
+    settings, the loopback exemptions, the legacy QUIC firewall rule, the
+    listening port and the single-instance lock.
+
+    It is deliberately separate from :func:`quit_app` because the update
+    handover needs it on its own.  ``CloseApplications=force`` in the Inno
+    Setup script means the installer terminates ``calmweb.exe`` outright as
+    soon as it reaches its "preparing to install" step -- and a terminated
+    process runs neither ``atexit`` nor the rest of ``quit_app``.  Launching
+    the installer first and cleaning up afterwards is therefore a race the
+    application loses often enough to leave the machine pointing at a proxy
+    that no longer exists.  So the cleanup runs *first*, and the installer is
+    only started once there is nothing left to undo.
+
+    Idempotent, and safe to call from any thread.
+    """
+    with _SYSTEM_STATE_LOCK:
+        if _SYSTEM_STATE_RELEASED.is_set():
+            return
+        _SYSTEM_STATE_RELEASED.set()
+
+        # Freeze the proxy watchdog: with the server deliberately stopped it
+        # would otherwise count failures and restart it a few seconds later.
+        config.update_in_progress = True
+
+        try:
+            disable_proxy()
+            log("System proxy reset.")
+        except Exception as e:
+            log(f"Error resetting system proxy: {e}")
+
+        with contextlib.suppress(Exception):
+            from .platform.windows import remove_quic_policy
+
+            remove_quic_policy()
+
+        try:
+            from .proxy import stop_proxy_server
+
+            stop_proxy_server()
+        except Exception as e:
+            log(f"Error stopping proxy: {e}")
+
+        # os._exit() below skips the release in __main__.main(), and the
+        # freshly installed copy must not find a lock file naming us.
+        with contextlib.suppress(Exception):
+            from .single_instance import release_current_lock
+
+            release_current_lock()
+
+
+def restore_system_state() -> None:
+    """Undo :func:`release_system_state` when the shutdown is called off.
+
+    The one case that needs it: the user declines the UAC prompt of the update
+    installer.  The application keeps running, so the proxy has to come back
+    rather than leave the machine silently unfiltered.
+    """
+    with _SYSTEM_STATE_LOCK:
+        if not _SYSTEM_STATE_RELEASED.is_set():
+            return
+
+        try:
+            from .proxy import start_proxy_server
+
+            # The watchdog thread was only frozen, never stopped: asking for a
+            # second one here would leave two of them probing the same port.
+            start_proxy_server(
+                config.PROXY_BIND_IP, config.PROXY_PORT, with_health_check=False
+            )
+        except Exception as e:
+            log(f"Error restarting proxy server: {e}")
+
+        try:
+            if config.block_enabled:
+                enable_proxy()
+        except Exception as e:
+            log(f"Error restoring system proxy: {e}")
+
+        config.update_in_progress = False
+        _SYSTEM_STATE_RELEASED.clear()
+        log("Mise à jour annulée: proxy réactivé.")
+
+    with contextlib.suppress(Exception):
+        refresh_tray()
 
 
 def quit_app(icon: Icon | None = None, item: Any | None = None) -> None:
@@ -663,27 +672,18 @@ def quit_app(icon: Icon | None = None, item: Any | None = None) -> None:
         log("Shutdown requested.")
         config._SHUTDOWN_EVENT.set()
 
-        # Remove system proxy if it was configured
-        try:
-            disable_proxy()
-            log("System proxy reset.")
-        except Exception as e:
-            log(f"Error resetting system proxy: {e}")
+        with contextlib.suppress(Exception):
+            from .gui import close_dashboard
 
-        if config.proxy_server:
-            try:
-                config.proxy_server.shutdown()
-                config.proxy_server.server_close()
-                log("Proxy server stopped.")
-            except Exception as e:
-                log(f"Error stopping proxy: {e}")
+            close_dashboard()
+
+        release_system_state()
 
         with contextlib.suppress(Exception):
-            if icon:
-                icon.stop()
+            if icon or _ICON:
+                (icon or _ICON).stop()
 
         log("Shutting down Calm Web application.")
-        # Brief delay to let threads finish cleanly
         time.sleep(0.2)
         try:
             os._exit(0)
@@ -692,4 +692,3 @@ def quit_app(icon: Icon | None = None, item: Any | None = None) -> None:
                 sys.exit(0)
     except Exception as e:
         log(f"Error shutting down the application: {e}")
-

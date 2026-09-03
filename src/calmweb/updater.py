@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -191,15 +190,28 @@ def download_installer(
 
 
 def apply_update(installer_path: Path, silent: bool = False) -> None:
-    """Launch the downloaded installer and exit the application.
+    """Hand the machine over to the downloaded installer and exit.
 
-    This function:
+    Order matters here.  The Inno Setup script declares
+    ``CloseApplications=force`` for ``calmweb.exe``, so the installer
+    terminates this process as soon as it reaches its "preparing to install"
+    step.  A terminated process runs neither its ``atexit`` handlers nor the
+    rest of ``quit_app``, so cleaning up *after* starting the installer is a
+    race -- and losing it leaves the system proxy pointing at a port nothing
+    listens on any more.
 
-    1. Launches the Inno Setup installer (optionally with ``/SILENT`` flag)
-       using ``ShellExecuteW`` with the ``"runas"`` verb so the UAC elevation
-       prompt is shown.  A plain ``subprocess.Popen`` would fail with
-       ``[WinError 740] The requested operation requires elevation``.
-    2. Triggers application shutdown so the installer can proceed.
+    So this function:
+
+    1. Puts the machine back to its unproxied state and stops the proxy server
+       (:func:`calmweb.tray.release_system_state`), while nothing can
+       interrupt it.
+    2. Launches the Inno Setup installer (optionally with the ``/SILENT``
+       flag) using ``ShellExecuteW`` with the ``"runas"`` verb so the UAC
+       elevation prompt is shown.  A plain ``subprocess.Popen`` would fail
+       with ``[WinError 740] The requested operation requires elevation``.
+       If that fails -- a declined UAC prompt is the ordinary case -- the
+       proxy is put back and the application carries on running.
+    3. Triggers application shutdown so the installer can proceed.
 
     Args:
         installer_path: Path to the downloaded ``CalmWeb_Setup.exe``.
@@ -209,6 +221,12 @@ def apply_update(installer_path: Path, silent: bool = False) -> None:
 
     if not installer_path.exists():
         raise UpdateCheckError(f"Installer file not found: {installer_path}")
+
+    # Import here to avoid circular imports.
+    from .tray import release_system_state, restore_system_state
+
+    log("Arrêt du proxy avant l'installation...")
+    release_system_state()
 
     try:
         if sys.platform == "win32":
@@ -240,8 +258,12 @@ def apply_update(installer_path: Path, silent: bool = False) -> None:
                 cmd.append("/SILENT")
             subprocess.Popen(cmd, close_fds=True, start_new_session=True)
     except UpdateCheckError:
+        # The installer never started (a declined UAC prompt, most often), so
+        # the application stays up -- and must be protecting again.
+        restore_system_state()
         raise
     except Exception as exc:
+        restore_system_state()
         raise UpdateCheckError(f"Failed to launch installer: {exc}") from exc
 
     log("Installeur démarré. Arrêt de  Calm Web pour mise à jour...")

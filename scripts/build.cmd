@@ -14,7 +14,7 @@ echo [INFO] Version: %APP_VERSION%
 :: Use PyInstaller via Python (no PATH needed)
 set "PYINSTALLER=python -m PyInstaller"
 
-set "ICON_PNG=%REPO_ROOT%\resources\calmweb.png"
+set "ICON_PNG=%REPO_ROOT%\resources\calmweb_icon.png"
 set "ICON_ICO=%REPO_ROOT%\resources\calmweb.ico"
 set "ICON_SWITCH="
 if /i "%NO_ICON%"=="1" (
@@ -29,6 +29,46 @@ if /i "%NO_ICON%"=="1" (
     echo No icon found; skipping icon. Set NO_ICON=1 to suppress this message.
   )
 )
+
+REM --- Locate the Tcl/Tk runtime data -----------------------------------
+REM PyInstaller bundles Tcl/Tk as "_tcl_data" / "_tk_data" at the root of the
+REM bundle. Two situations exist:
+REM
+REM  * Tcl/Tk 8.6 (Python <= 3.13): real folders on disk. A few Python
+REM    installations confuse PyInstaller's hook, so we pass the folders
+REM    explicitly -- harmless when the hook already found them.
+REM  * Tcl/Tk 9 (Python 3.14+): the library lives in a zipfs archive inside
+REM    the DLL and $tcl_library reads "//zipfs:/lib/tcl/tcl_library". There is
+REM    nothing to copy, and only PyInstaller 6.22 or newer knows how to
+REM    handle it. With an older PyInstaller the build succeeds but the app
+REM    dies at startup with:
+REM      FileNotFoundError: Tcl data directory "..._MEIxxxxx\_tcl_data" not found
+set "TCL_DIR="
+set "TK_DIR="
+for /f "usebackq tokens=1,* delims=;" %%A in (`python -c "import tkinter;r=tkinter.Tk();r.withdraw();print(r.tk.exprstring('$tcl_library')+';'+r.tk.exprstring('$tk_library'));r.destroy()"`) do (
+  set "TCL_DIR=%%A"
+  set "TK_DIR=%%B"
+)
+
+set "TCL_SWITCH="
+set "TK_SWITCH="
+if exist "%TCL_DIR%\init.tcl" set "TCL_SWITCH=--add-data "%TCL_DIR%;_tcl_data""
+if exist "%TK_DIR%\tk.tcl" set "TK_SWITCH=--add-data "%TK_DIR%;_tk_data""
+
+echo [INFO] Tcl library: %TCL_DIR%
+echo [INFO] Tk  library: %TK_DIR%
+
+if defined TCL_SWITCH goto :tcl_ok
+
+echo.
+echo [INFO] Tcl/Tk data is embedded in the DLL (Tcl 9 / zipfs), not on disk.
+echo [INFO] This requires PyInstaller 6.22 or newer. Current version:
+python -m PyInstaller --version
+echo [INFO] If the built app fails with: Tcl data directory ... _tcl_data not found
+echo [INFO] then run:  python -m pip install --upgrade pyinstaller
+echo.
+
+:tcl_ok
 
 set "ENTRY=%REPO_ROOT%\scripts\pyinstaller_entry.py"
 set "DIST_DIR=%REPO_ROOT%\dist"
@@ -49,6 +89,12 @@ if exist "%DIST_EXE%" (
   del /f /q "%DIST_EXE%" >nul 2>&1
 )
 
+:: Drop the previous work directory and generated spec. A build tree left
+:: behind by an older PyInstaller is a common source of a frozen app that
+:: builds fine but cannot start.
+if exist "%REPO_ROOT%\build" rmdir /s /q "%REPO_ROOT%\build" >nul 2>&1
+if exist "%REPO_ROOT%\scripts\calmweb_installer.spec" del /f /q "%REPO_ROOT%\scripts\calmweb_installer.spec" >nul 2>&1
+
 REM --- Write VERSION file for PyInstaller bundle ---
 echo %APP_VERSION%> "%REPO_ROOT%\VERSION"
 
@@ -58,11 +104,21 @@ echo %APP_VERSION%> "%REPO_ROOT%\VERSION"
   --hidden-import urllib3 ^
   --hidden-import tkinter ^
   --hidden-import tkinter.scrolledtext ^
+  --hidden-import tkinter.ttk ^
+  --hidden-import tkinter.filedialog ^
+  --hidden-import tkinter.messagebox ^
   --hidden-import darkdetect ^
+  --hidden-import calmweb.gui ^
+  --hidden-import calmweb.i18n ^
+  --hidden-import calmweb.stats ^
   --collect-all customtkinter ^
-  --add-data "%REPO_ROOT%\resources\calmweb.png;." ^
+  --add-data "%REPO_ROOT%\resources\calmweb_icon.png;." ^
   --add-data "%REPO_ROOT%\resources\calmweb_active.png;." ^
+  --add-data "%REPO_ROOT%\resources\calmweb.ico;." ^
+  --add-data "%REPO_ROOT%\resources\calmweb_active.ico;." ^
   --add-data "%REPO_ROOT%\VERSION;." ^
+  %TCL_SWITCH% ^
+  %TK_SWITCH% ^
   %BUILD_SWITCH% ^
   --noconsole ^
   --paths "%REPO_ROOT%\src" ^

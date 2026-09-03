@@ -13,10 +13,22 @@ from tkinter import Tk, messagebox
 
 from pystray import Icon
 
-from . import config
-from .config_io import ensure_custom_cfg_exists, get_blocklist_urls, load_custom_cfg_to_globals
+from . import config, stats
+from .config_io import (
+    ensure_custom_cfg_exists,
+    get_blocklist_urls,
+    load_custom_cfg_to_globals,
+    read_bool_option,
+)
+from .i18n import detect_system_language, set_language, t
 from .log import log
-from .platform.windows import disable_proxy, enable_proxy, register_shutdown_handler
+from .platform.windows import (
+    disable_proxy,
+    enable_proxy,
+    register_shutdown_handler,
+    remove_quic_policy,
+    request_elevation_if_useful,
+)
 from .proxy import start_proxy_server
 from .resolver import BlocklistResolver
 from .single_instance import acquire_single_instance_lock, release_single_instance_lock
@@ -25,6 +37,7 @@ from .tray import (
     check_for_updates_startup,
     create_image,
     quit_app,
+    refresh_tray,
     run_log_viewer,
     update_menu,
 )
@@ -32,6 +45,41 @@ from .tray import (
 # ===================================================================
 # Application startup
 # ===================================================================
+
+#: How long to wait between two attempts at downloading a whitelist while the
+#: protection is paused for the lack of one.  Short, because the machine is
+#: unfiltered in the meantime; the usual cause is a network that is simply not
+#: up yet a minute after the installer finished.
+WHITELIST_RETRY_INTERVAL_SECS: float = 60.0
+
+
+def _retry_whitelist_until_available() -> None:
+    """Keep asking for a whitelist while the protection is paused.
+
+    ``BlocklistResolver._load_whitelist`` calls
+    :func:`tray.resume_protection_after_whitelist` as soon as one source
+    answers, so this loop only has to keep trying and then get out of the way.
+    """
+    while not config._SHUTDOWN_EVENT.wait(WHITELIST_RETRY_INTERVAL_SECS):
+        if not config.protection_paused_no_whitelist:
+            return
+        try:
+            resolver = config.current_resolver
+            if resolver is None:
+                # The resolver itself could not be built earlier; without one
+                # nothing is filtered at all, so it is rebuilt from scratch.
+                resolver = BlocklistResolver(get_blocklist_urls(), config.RELOAD_INTERVAL)
+                config.current_resolver = resolver
+            else:
+                resolver._load_whitelist()
+            if getattr(resolver, "whitelist_download_successful", False):
+                return
+            log(
+                "[\u26a0\ufe0f] Liste blanche toujours indisponible, protection encore "
+                f"en pause (nouvelle tentative dans {int(WHITELIST_RETRY_INTERVAL_SECS)} s)."
+            )
+        except Exception as e:
+            log(f"Nouvelle tentative de liste blanche: {e}")
 
 
 def run_calmweb() -> None:
@@ -57,17 +105,38 @@ def run_calmweb() -> None:
         try:
             resolver = BlocklistResolver(get_blocklist_urls(), config.RELOAD_INTERVAL)
             config.current_resolver = resolver
-            if not resolver.whitelist_download_successful:
+            if not resolver.whitelist_download_successful and config.block_enabled:
+                # Paused, not disabled.  Filtering with no whitelist blocks
+                # sites the user explicitly allowed, so stepping aside is
+                # right -- but the old permanent disable left the machine
+                # unfiltered for the whole session, with nothing but one log
+                # line to say so.  _retry_whitelist_until_available brings the
+                # protection back as soon as a list arrives.
+                config.protection_paused_no_whitelist = True
                 config.block_enabled = False
-                log("[⚠️] Erreur de téléchargement de la liste blanche, désactivation de Calm Web")
+                log(
+                    "[⚠️] Liste blanche indisponible, protection en pause "
+                    "(nouvelle tentative en cours)"
+                )
         except Exception as e:
-            config.block_enabled = False
+            if config.block_enabled:
+                config.protection_paused_no_whitelist = True
+                config.block_enabled = False
             log(f"Error creating resolver: {e}")
 
         try:
             start_proxy_server(config.PROXY_BIND_IP, config.PROXY_PORT)
         except Exception as e:
             log(f"Error starting proxy server: {e}")
+
+        # Earlier versions could install a firewall rule blocking outbound
+        # UDP/80 and UDP/443. The option is gone; a rule left over from an
+        # upgrade would keep blocking QUIC machine-wide with nothing left in
+        # the interface to undo it.
+        try:
+            remove_quic_policy()
+        except Exception as e:
+            log(f"Error removing the legacy QUIC firewall rule: {e}")
 
         try:
             if config.block_enabled:
@@ -76,6 +145,11 @@ def run_calmweb() -> None:
                 disable_proxy()
         except Exception as e:
             log(f"Error setting system proxy: {e}")
+
+        # Nothing else would ever lift the pause: the ordinary reload only
+        # runs once an hour, and only when traffic goes through the proxy.
+        if config.protection_paused_no_whitelist:
+            threading.Thread(target=_retry_whitelist_until_available, daemon=True).start()
 
         # Register shutdown/logoff handlers to ensure proxy is disabled on exit
         try:
@@ -91,6 +165,19 @@ def run_calmweb() -> None:
             f"Calm Web démarré. Proxy actif {config.PROXY_BIND_IP}:{config.PROXY_PORT}, "
             f"Protection {'Activée' if config.block_enabled else 'Désactivée'}."
         )
+        stats.record(
+            "system",
+            detail=f"Calm Web {__import__('calmweb').__version__} — "
+            f"{config.PROXY_BIND_IP}:{config.PROXY_PORT}",
+        )
+
+        # Keep the tray tooltip and counters fresh without opening the menu.
+        def _tray_heartbeat() -> None:
+            while not config._SHUTDOWN_EVENT.wait(5.0):
+                with contextlib.suppress(Exception):
+                    refresh_tray()
+
+        threading.Thread(target=_tray_heartbeat, daemon=True).start()
 
     # Start systray icon first; heavy initialization is deferred to setup callback.
     try:
@@ -153,8 +240,8 @@ def _show_already_running_alert() -> None:
         root = Tk()
         root.withdraw()
         messagebox.showwarning(
-            "Calm Web",
-            "Calm Web est déjà en cours d'exécution.",
+            t("app.name"),
+            t("alert.already_running"),
             parent=root,
         )
         root.destroy()
@@ -171,8 +258,19 @@ def main() -> None:
     - Otherwise starts the proxy application with up to 5 restart attempts
       on critical failure.
     """
+    # Pick a language before anything user-visible happens; custom.cfg may
+    # override it a moment later.
+    with contextlib.suppress(Exception):
+        set_language(config.language or detect_system_language())
+
     if "--log-viewer" in sys.argv:
         run_log_viewer()
+        return
+
+    # Before the lock: an elevated copy of CalmWeb would find the lock held by
+    # this unprivileged one and refuse to start. Declining is fine -- CalmWeb
+    # then runs without privileges, which costs only the loopback exemptions.
+    if read_bool_option("ask_elevation") and request_elevation_if_useful():
         return
 
     instance_lock = acquire_single_instance_lock()

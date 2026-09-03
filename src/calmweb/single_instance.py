@@ -1,11 +1,17 @@
 """Single-instance process lock utilities (file-only lock)."""
 
 from __future__ import annotations
+
 import os
 import subprocess
+
 from . import config
 
 LOCK_FILENAME = "calmweb.lock"
+
+#: Path of the lock this process owns, so any part of the app can give it back
+#: without the entry point having to hand the path around.
+_CURRENT_LOCK_PATH: str | None = None
 
 def _is_process_running(pid: int) -> bool:
     """Check if a process with given PID is running and is calmweb.exe."""
@@ -32,7 +38,7 @@ def acquire_single_instance_lock() -> str | None:
 
     if os.path.exists(lock_path):
         try:
-            with open(lock_path, "r", encoding="utf-8") as f:
+            with open(lock_path, encoding="utf-8") as f:
                 pid = int(f.read().strip())
 
             if _is_process_running(pid):
@@ -51,15 +57,32 @@ def acquire_single_instance_lock() -> str | None:
     try:
         with open(lock_path, "x", encoding="utf-8") as f:
             f.write(str(os.getpid()))
+        global _CURRENT_LOCK_PATH
+        _CURRENT_LOCK_PATH = lock_path
         return lock_path
     except FileExistsError:
         return None
 
 
+def release_current_lock() -> None:
+    """Give back the lock this process owns, wherever we are in the code.
+
+    ``quit_app`` leaves through ``os._exit``, which skips the release in
+    :func:`calmweb.__main__.main`; and the update handover has to free the lock
+    before the installer starts the new copy, or that copy finds a lock file
+    still naming a live PID and refuses to run.
+    """
+    release_single_instance_lock(_CURRENT_LOCK_PATH)
+
+
 def release_single_instance_lock(lock_path: str | None) -> None:
     """Remove the lock file."""
+    global _CURRENT_LOCK_PATH
     if lock_path is None:
         return
+
+    if lock_path == _CURRENT_LOCK_PATH:
+        _CURRENT_LOCK_PATH = None
 
     try:
         os.unlink(lock_path)

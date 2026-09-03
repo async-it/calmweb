@@ -192,3 +192,265 @@ class TestParseOptionLine:
 
     def test_no_equals_returns_none(self):
         assert _parse_option_line("no_equals_here") is None
+
+
+# ===================================================================
+# New options: QUIC flag, language and theme
+# ===================================================================
+
+
+class TestInterfaceOptions:
+    def test_language_and_theme_round_trip(self, tmp_path):
+        cfg = _write_cfg(
+            tmp_path,
+            "[OPTIONS]\nlanguage = en\ntheme = dark\nnotify_on_block = 1\n",
+        )
+        parse_custom_cfg(cfg)
+
+        assert config.language == "en"
+        assert config.theme == "dark"
+        assert config.notify_on_block is True
+
+    def test_unknown_theme_falls_back_to_system(self, tmp_path):
+        cfg = _write_cfg(tmp_path, "[OPTIONS]\ntheme = neon\n")
+        parse_custom_cfg(cfg)
+        assert config.theme == "system"
+
+    def test_defaults_are_restored_when_options_are_absent(self, tmp_path):
+        config.notify_on_block = True
+        config.theme = "dark"
+        cfg = _write_cfg(tmp_path, "[BLOCK]\nevil.com\n")
+        parse_custom_cfg(cfg)
+        assert config.notify_on_block is False
+        assert config.theme == "system"
+
+    def test_notifications_default_to_off_in_a_fresh_file(self, tmp_path):
+        path = str(tmp_path / "custom.cfg")
+        write_default_custom_cfg(path, set(), set())
+        parse_custom_cfg(path)
+        assert config.notify_on_block is False
+
+    def test_save_custom_cfg_writes_current_state(self, tmp_path):
+        from calmweb.config_io import current_options, save_custom_cfg
+
+        path = str(tmp_path / "saved.cfg")
+        config.block_http_traffic = False
+        config.language = "en"
+        save_custom_cfg(
+            path=path,
+            blocked_set={"evil.com"},
+            whitelist_set={"good.com"},
+            options=current_options(),
+        )
+
+        blocked, whitelist = parse_custom_cfg(path)
+        assert blocked == {"evil.com"}
+        assert whitelist == {"good.com"}
+        assert config.block_http_traffic is False
+        assert config.language == "en"
+
+
+class TestOptionValueParsing:
+    def test_raw_values_are_preserved(self):
+        from calmweb.parser import _parse_option_line_raw
+
+        assert _parse_option_line_raw("language = EN") == ("language", "EN")
+
+    def test_as_bool_accepts_the_documented_values(self):
+        from calmweb.parser import as_bool
+
+        assert as_bool("yes") is True
+        assert as_bool("0") is False
+        assert as_bool(None, default=True) is True
+        assert as_bool(True) is True
+
+
+class TestRemovingTheLastEntry:
+    """Emptying a section must actually empty the live set.
+
+    Guarding the assignment with ``if blocked:`` made the last entry of a
+    list impossible to remove: the previous set stayed in memory and the
+    domain kept being blocked for the rest of the session.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _restore(self):
+        blocked, whitelist = config.manual_blocked_domains, config.whitelisted_domains
+        yield
+        config.manual_blocked_domains, config.whitelisted_domains = blocked, whitelist
+
+    def test_removing_the_last_blocked_domain_takes_effect(self, tmp_path):
+        from calmweb.config_io import load_custom_cfg_to_globals
+
+        cfg = _write_cfg(tmp_path, "[BLOCK]\nteamviewer.com\n[WHITELIST]\ngood.com\n")
+        load_custom_cfg_to_globals(cfg)
+        assert config.manual_blocked_domains == {"teamviewer.com"}
+
+        # The user deletes the only line of the section and saves.
+        cfg = _write_cfg(tmp_path, "[BLOCK]\n[WHITELIST]\ngood.com\n")
+        load_custom_cfg_to_globals(cfg)
+        assert config.manual_blocked_domains == set()
+        assert config.whitelisted_domains == {"good.com"}
+
+    def test_removing_the_last_whitelisted_domain_takes_effect(self, tmp_path):
+        from calmweb.config_io import load_custom_cfg_to_globals
+
+        cfg = _write_cfg(tmp_path, "[WHITELIST]\ngood.com\n")
+        load_custom_cfg_to_globals(cfg)
+        assert config.whitelisted_domains == {"good.com"}
+
+        cfg = _write_cfg(tmp_path, "[BLOCK]\nevil.com\n")
+        load_custom_cfg_to_globals(cfg)
+        assert config.whitelisted_domains == set()
+
+    def test_a_missing_file_leaves_the_lists_alone(self, tmp_path):
+        from calmweb.config_io import load_custom_cfg_to_globals
+
+        config.manual_blocked_domains = {"kept.example"}
+        config.whitelisted_domains = {"kept-allowed.example"}
+        load_custom_cfg_to_globals(str(tmp_path / "nope.cfg"))
+        assert config.manual_blocked_domains == {"kept.example"}
+        assert config.whitelisted_domains == {"kept-allowed.example"}
+
+
+class TestSourceUrlNormalisation:
+    """A source is a URL to download, never a host to match."""
+
+    def test_https_url_is_kept_verbatim(self):
+        from calmweb.normalize import normalize_source_url
+
+        url = "https://example.com/Lists/Hosts.TXT?v=2"
+        assert normalize_source_url(url) == url
+
+    def test_scheme_case_is_normalised_but_path_is_not(self):
+        from calmweb.normalize import normalize_source_url
+
+        assert normalize_source_url("HTTPS://Example.com/Path") == "https://Example.com/Path"
+
+    def test_file_url_is_accepted(self):
+        from calmweb.normalize import normalize_source_url
+
+        assert normalize_source_url("file:///tmp/list.txt") == "file:///tmp/list.txt"
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "",
+            "   ",
+            "# a comment",
+            "! adblock comment",
+            "example.com",
+            "ftp://example.com/list.txt",
+            "javascript:alert(1)",
+            "https://example.com/a b.txt",
+            "https://",
+        ],
+    )
+    def test_rejected_entries(self, value):
+        from calmweb.normalize import normalize_source_url
+
+        assert normalize_source_url(value) is None
+
+    def test_over_long_url_is_rejected(self):
+        from calmweb.normalize import normalize_source_url
+
+        assert normalize_source_url("https://example.com/" + "a" * 4000) is None
+
+
+class TestEditableSources:
+    """[BLOCK_SOURCES] / [WHITELIST_SOURCES] round trips."""
+
+    @pytest.fixture(autouse=True)
+    def _restore(self):
+        original = (config.blocklist_source_urls, config.whitelist_source_urls)
+        yield
+        (config.blocklist_source_urls, config.whitelist_source_urls) = original
+
+    def test_sources_are_read_in_order(self, tmp_path):
+        cfg = _write_cfg(
+            tmp_path,
+            "[BLOCK_SOURCES]\n"
+            "https://b.example/list.txt\n"
+            "https://a.example/list.txt\n"
+            "\n"
+            "[WHITELIST_SOURCES]\n"
+            "https://w.example/allow.txt\n",
+        )
+        parse_custom_cfg(cfg)
+        assert config.blocklist_source_urls == [
+            "https://b.example/list.txt",
+            "https://a.example/list.txt",
+        ]
+        assert config.whitelist_source_urls == ["https://w.example/allow.txt"]
+
+    def test_duplicates_are_dropped_keeping_the_first(self, tmp_path):
+        cfg = _write_cfg(
+            tmp_path,
+            "[BLOCK_SOURCES]\n"
+            "https://a.example/list.txt\n"
+            "https://b.example/list.txt\n"
+            "https://a.example/list.txt\n",
+        )
+        parse_custom_cfg(cfg)
+        assert config.blocklist_source_urls == [
+            "https://a.example/list.txt",
+            "https://b.example/list.txt",
+        ]
+
+    def test_unusable_lines_are_skipped(self, tmp_path):
+        cfg = _write_cfg(
+            tmp_path,
+            "[BLOCK_SOURCES]\n"
+            "# a comment\n"
+            "not-a-url\n"
+            "https://ok.example/list.txt\n",
+        )
+        parse_custom_cfg(cfg)
+        assert config.blocklist_source_urls == ["https://ok.example/list.txt"]
+
+    def test_a_missing_section_restores_the_defaults(self, tmp_path):
+        """An older custom.cfg has no source section at all."""
+        config.blocklist_source_urls = ["https://stale.example/list.txt"]
+        cfg = _write_cfg(tmp_path, "[BLOCK]\nevil.com\n")
+        parse_custom_cfg(cfg)
+        assert config.blocklist_source_urls == config.DEFAULT_BLOCKLIST_SOURCE_URLS
+
+    def test_an_empty_section_means_no_sources(self, tmp_path):
+        """Deleting every source is a choice, not a reason to restore defaults."""
+        cfg = _write_cfg(tmp_path, "[BLOCK_SOURCES]\n\n[OPTIONS]\ntheme = dark\n")
+        parse_custom_cfg(cfg)
+        assert config.blocklist_source_urls == []
+        assert config.theme == "dark"
+
+    def test_round_trip_through_save(self, tmp_path):
+        from calmweb.config_io import current_options, save_custom_cfg
+
+        path = str(tmp_path / "saved.cfg")
+        save_custom_cfg(
+            path=path,
+            blocked_set=set(),
+            whitelist_set=set(),
+            options=current_options(),
+            block_sources=["https://one.example/l.txt", "https://two.example/l.txt"],
+            whitelist_sources=[],
+        )
+        parse_custom_cfg(path)
+        assert config.blocklist_source_urls == [
+            "https://one.example/l.txt",
+            "https://two.example/l.txt",
+        ]
+        assert config.whitelist_source_urls == []
+
+    def test_a_fresh_file_carries_the_defaults(self, tmp_path):
+        path = str(tmp_path / "custom.cfg")
+        write_default_custom_cfg(path, set(), set())
+        parse_custom_cfg(path)
+        assert config.blocklist_source_urls == config.DEFAULT_BLOCKLIST_SOURCE_URLS
+        assert config.whitelist_source_urls == config.DEFAULT_WHITELIST_SOURCE_URLS
+
+    def test_no_sources_means_nothing_is_downloaded(self):
+        """Red Flag Domains must not sneak back in when the user emptied the list."""
+        from calmweb.config_io import get_blocklist_urls
+
+        config.blocklist_source_urls = []
+        assert get_blocklist_urls() == []
