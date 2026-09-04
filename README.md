@@ -19,7 +19,7 @@
   <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d6">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.12%2B-3776ab">
   <img alt="Licence" src="https://img.shields.io/badge/licence-GPL--3.0-blue">
-  <img alt="Domaines filtrés" src="https://img.shields.io/badge/domaines%20filtr%C3%A9s-600%20000%2B-orange">
+  <img alt="Domaines filtrés" src="https://img.shields.io/badge/domaines%20filtr%C3%A9s-400%20000%2B-orange">
 </p>
 
 <p align="center">
