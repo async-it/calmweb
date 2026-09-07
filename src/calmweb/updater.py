@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
+import ctypes
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -189,6 +192,48 @@ def download_installer(
     return dest_path
 
 
+#: Variables the PyInstaller bootloader sets to describe the running onefile
+#: bundle. They must not survive into the installer.
+#:
+#: Inno Setup starts the freshly written ``calmweb.exe`` as its own child, and
+#: that copy inherits our environment through Setup. ``_PYI_ARCHIVE_FILE`` then
+#: still names its own path -- the installer overwrote the file in place -- so
+#: the bootloader concludes it was spawned by the parent process of a onefile
+#: application, checks that the parent runs the same executable, finds
+#: ``CalmWeb_Setup.exe`` instead, and refuses to start:
+#:
+#:     Security validation failure: parent process has different executable!
+#:
+#: Clearing the variables makes the new copy a top-level process again.
+_PYI_ENV_VARS: tuple[str, ...] = (
+    "_PYI_ARCHIVE_FILE",
+    "_PYI_APPLICATION_HOME_DIR",
+    "_PYI_PARENT_PROCESS_LEVEL",
+    "_PYI_SPLASH_IPC",
+    "_MEIPASS2",  # PyInstaller < 6
+)
+
+
+def _clear_pyinstaller_env() -> None:
+    """Drop the bootloader's variables from the environment children inherit.
+
+    ``os.environ`` alone is not enough on Windows: ``ShellExecuteW`` hands the
+    child the Win32 environment block, so the variables are removed there too.
+    Only the block this process passes on is touched -- ``sys._MEIPASS`` and
+    everything already resolved at startup are unaffected.
+    """
+    for name in _PYI_ENV_VARS:
+        os.environ.pop(name, None)
+        if sys.platform == "win32":
+            with contextlib.suppress(Exception):
+                kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+                kernel32.SetEnvironmentVariableW.argtypes = [
+                    ctypes.c_wchar_p,
+                    ctypes.c_wchar_p,
+                ]
+                kernel32.SetEnvironmentVariableW(name, None)
+
+
 def apply_update(installer_path: Path, silent: bool = False) -> None:
     """Hand the machine over to the downloaded installer and exit.
 
@@ -205,13 +250,16 @@ def apply_update(installer_path: Path, silent: bool = False) -> None:
     1. Puts the machine back to its unproxied state and stops the proxy server
        (:func:`calmweb.tray.release_system_state`), while nothing can
        interrupt it.
-    2. Launches the Inno Setup installer (optionally with the ``/SILENT``
+    2. Clears PyInstaller's own environment variables
+       (:func:`_clear_pyinstaller_env`), which the installer would otherwise
+       pass on to the new copy of the application it starts.
+    3. Launches the Inno Setup installer (optionally with the ``/SILENT``
        flag) using ``ShellExecuteW`` with the ``"runas"`` verb so the UAC
        elevation prompt is shown.  A plain ``subprocess.Popen`` would fail
        with ``[WinError 740] The requested operation requires elevation``.
        If that fails -- a declined UAC prompt is the ordinary case -- the
        proxy is put back and the application carries on running.
-    3. Triggers application shutdown so the installer can proceed.
+    4. Triggers application shutdown so the installer can proceed.
 
     Args:
         installer_path: Path to the downloaded ``CalmWeb_Setup.exe``.
@@ -227,6 +275,8 @@ def apply_update(installer_path: Path, silent: bool = False) -> None:
 
     log("Arrêt du proxy avant l'installation...")
     release_system_state()
+
+    _clear_pyinstaller_env()
 
     try:
         if sys.platform == "win32":

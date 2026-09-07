@@ -68,7 +68,17 @@ Filename: "netsh"; Parameters: "advfirewall firewall add rule name=CalmWeb dir=i
 ; Create scheduled task
 Filename: "schtasks"; Parameters: "/Create /tn CalmWeb /XML ""{app}\scheduled_task.xml"" /F"; Flags: runhidden
 ; Launch after install (optional)
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+; Started through cmd so the PyInstaller bootloader variables are cleared
+; first. During an in-app update, Setup inherits _PYI_* from the running copy
+; that launched it and would hand them to the copy started here; because the
+; installer overwrites calmweb.exe in place, _PYI_ARCHIVE_FILE still names the
+; right path, so the bootloader believes a onefile parent spawned it, checks
+; that parent, finds CalmWeb_Setup.exe and aborts with
+;   Security validation failure: parent process has different executable!
+; calmweb.updater clears them on its side too, but only a version that already
+; carries that fix can; this covers the update coming *from* an older one.
+; `start ""` also detaches the app so it does not die with the shell.
+Filename: "{cmd}"; Parameters: "/C set ""_PYI_ARCHIVE_FILE="" & set ""_PYI_APPLICATION_HOME_DIR="" & set ""_PYI_PARENT_PROCESS_LEVEL="" & set ""_PYI_SPLASH_IPC="" & start """" ""{app}\{#MyAppExeName}"""; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent runhidden
 
 [UninstallRun]
 ; Kill running instances
