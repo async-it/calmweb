@@ -19,7 +19,7 @@
   <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d6">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.12%2B-3776ab">
   <img alt="Licence" src="https://img.shields.io/badge/licence-GPL--3.0-blue">
-  <img alt="Domaines filtrés" src="https://img.shields.io/badge/domaines%20filtr%C3%A9s-400%20000%2B-orange">
+  <img alt="Domaines filtrés" src="https://img.shields.io/badge/domaines%20filtr%C3%A9s-600%20000%2B-orange">
 </p>
 
 <p align="center">
@@ -195,7 +195,7 @@ Le fichier vit dans `%APPDATA%\CalmWeb` ; son emplacement exact est indiqué dan
 | --- | --- | --- |
 | `block_http_traffic` | `1` | Force le HTTPS. Refuse aussi les `CONNECT` vers le port 80, qui tunnelliseraient du HTTP en clair en contournant la règle. |
 | `block_ip_direct` | `1` | Bloque la navigation directe vers une adresse IP (IPv4 et IPv6). |
-| `block_http_other_ports` | `1` | Seuls les ports 80, 443 et les ports VoIP/STUN sont autorisés. À mettre à `0` si un bac à sable ou une application métier cesse de fonctionner. |
+| `block_http_other_ports` | `1` | Seuls les ports 80, 443 et 3478 (relais TURN des appels WebRTC) sont autorisés. À mettre à `0` si un bac à sable ou une application métier cesse de fonctionner. |
 | `notify_on_block` | `0` | Notification système nommant le domaine et la règle lors d'un blocage — un site bloqué en HTTPS ne peut pas afficher de page d'explication, le navigateur montre seulement une erreur de connexion. Les blocages répétés sont regroupés. Désactivé par défaut : sur une page chargée de publicités, le blocage intéressant est noyé parmi des dizaines d'autres. |
 | `ask_elevation` | `1` | Propose un redémarrage en administrateur au lancement, et seulement quand cela sert à quelque chose — aujourd'hui, installer les exemptions loopback. Refuser démarre Calm Web sans privilèges. Un compte standard n'est jamais sollicité. |
 | `allow_revocation_http` | `1` | Laisse passer le trafic de révocation de certificats (CRL, AIA, OCSP) malgré la règle HTTPS ; ce trafic ne circule qu'en HTTP en clair. **Pas d'interrupteur dans l'interface** — c'est un réglage de diagnostic. Chaque requête autorisée apparaît dans l'onglet *Système*. Les listes noires s'appliquent toujours. |

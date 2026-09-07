@@ -13,7 +13,6 @@ import os
 import socket
 import subprocess
 import sys
-from typing import Any
 
 try:  # Windows-only; importing the module elsewhere (tests, CI) must still work
     import winreg
@@ -29,84 +28,6 @@ from . import is_windows
 #: keeps every helper below importable -- and unit-testable -- elsewhere,
 #: instead of raising AttributeError inside a suppressed try block.
 _NO_WINDOW: int = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
-# Optional Windows-only imports
-try:
-    import win32com.client  # type: ignore[import-untyped]  # noqa: F401
-    import win32con  # type: ignore[import-untyped]
-    import win32gui  # type: ignore[import-untyped]
-    import win32ui  # type: ignore[import-untyped]
-
-    WIN32_AVAILABLE: bool = True
-except Exception:
-    WIN32_AVAILABLE = False
-
-
-# ===================================================================
-# Exe icon extraction
-# ===================================================================
-
-
-def get_exe_icon(path: str, size: tuple[int, int] = (64, 64)) -> Any:
-    """Extract the icon from a Windows executable and return it as a PIL Image.
-
-    Returns None if not on Windows or if extraction fails.
-    """
-    if not is_windows():
-        return None
-    if not WIN32_AVAILABLE:
-        return None
-
-    try:
-        large, small = win32gui.ExtractIconEx(path, 0)
-    except Exception as e:
-        log(f"get_exe_icon: ExtractIconEx error: {e}")
-        return None
-
-    if (not small) and (not large):
-        return None
-
-    try:
-        hicon = large[0] if large else small[0]
-    except Exception:
-        return None
-
-    # Create compatible DC
-    img = None
-    try:
-        from PIL import Image
-
-        hdc = win32ui.CreateDCFromHandle(win32gui.GetDC(0))
-        hdc_mem = hdc.CreateCompatibleDC()
-        hbmp = win32ui.CreateBitmap()
-        hbmp.CreateCompatibleBitmap(hdc, size[0], size[1])
-        hdc_mem.SelectObject(hbmp)
-        win32gui.DrawIconEx(
-            hdc_mem.GetSafeHdc(), 0, 0, hicon, size[0], size[1], 0, 0, win32con.DI_NORMAL
-        )
-        bmpinfo = hbmp.GetInfo()
-        bmpstr = hbmp.GetBitmapBits(True)
-        img = Image.frombuffer(
-            "RGB",
-            (bmpinfo["bmWidth"], bmpinfo["bmHeight"]),
-            bmpstr,
-            "raw",
-            "BGRX",
-            0,
-            1,
-        )
-    except Exception as e:
-        log(f"get_exe_icon: conversion error: {e}")
-        img = None
-    finally:
-        with contextlib.suppress(Exception):
-            win32gui.DestroyIcon(hicon)
-        with contextlib.suppress(Exception):
-            hdc_mem.DeleteDC()
-            hdc.DeleteDC()
-            win32gui.ReleaseDC(0, 0)
-    return img
-
 
 # ===================================================================
 # Firewall rule

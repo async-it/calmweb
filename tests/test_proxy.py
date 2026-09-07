@@ -70,13 +70,17 @@ class TestExtractHostname:
         # Result may vary, but no exception
         assert isinstance(result, (str, type(None)))
 
-class TestVoipAllowedPorts:
+class TestAllowedConnectPorts:
     def test_expected_ports_present(self):
-        expected = {80, 443, 3478, 5060, 5061}
-        assert expected == BlockProxyHandler.VOIP_ALLOWED_PORTS
+        expected = {80, 443, 3478}
+        assert expected == BlockProxyHandler.ALLOWED_CONNECT_PORTS
 
     def test_arbitrary_port_not_in_set(self):
-        assert 8443 not in BlockProxyHandler.VOIP_ALLOWED_PORTS
+        assert 8443 not in BlockProxyHandler.ALLOWED_CONNECT_PORTS
+
+    def test_sip_ports_not_allowed(self):
+        assert 5060 not in BlockProxyHandler.ALLOWED_CONNECT_PORTS
+        assert 5061 not in BlockProxyHandler.ALLOWED_CONNECT_PORTS
 
 class TestDoConnect:
     """Verify the three-step decision flow in do_CONNECT:

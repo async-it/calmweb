@@ -72,7 +72,9 @@ WHITELIST_TIMEOUT_READ_SECS: float = 10.0
 
 PROXY_HANDLER_TIMEOUT_SECS: int = 10
 PROXY_PROTOCOL_VERSION: str = "HTTP/1.1"
-VOIP_ALLOWED_PORTS: set[int] = {80, 443, 3478, 5060, 5061}
+#: Ports a CONNECT tunnel may target: HTTP, HTTPS, and TURN over TCP
+#: (3478), which browsers use to relay WebRTC calls through a proxy.
+ALLOWED_CONNECT_PORTS: set[int] = {80, 443, 3478}
 
 # ---------------------------------------------------------------------------
 # Relay buffer size (bytes)

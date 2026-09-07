@@ -316,8 +316,8 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
     rbufsize: int = 0
     protocol_version: str = config.PROXY_PROTOCOL_VERSION
 
-    #: Ports a CONNECT tunnel may target (HTTP, HTTPS, STUN, SIP).
-    VOIP_ALLOWED_PORTS: set[int] = config.VOIP_ALLOWED_PORTS
+    #: Ports a CONNECT tunnel may target (HTTP, HTTPS, TURN over TCP).
+    ALLOWED_CONNECT_PORTS: set[int] = config.ALLOWED_CONNECT_PORTS
 
     #: Headers that must not be forwarded verbatim to the origin server.
     HOP_BY_HOP: frozenset[str] = frozenset(
@@ -539,7 +539,7 @@ class BlockProxyHandler(BaseHTTPRequestHandler):
         if config.block_enabled and resolver and resolver._is_blocked(hostname):
             return self._block_reason(resolver, hostname)
 
-        if config.block_http_other_ports and port not in self.VOIP_ALLOWED_PORTS:
+        if config.block_http_other_ports and port not in self.ALLOWED_CONNECT_PORTS:
             return "port"
 
         # A CONNECT to port 80 carries cleartext HTTP inside the tunnel and

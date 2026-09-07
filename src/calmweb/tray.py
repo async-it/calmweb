@@ -64,29 +64,14 @@ def apply_state_icon(icon: Icon) -> None:
     """Set the tray icon according to the current blocking state.
 
     Both states come from the ``.ico`` files, which carry a native 64-pixel
-    frame; the PNGs and finally the executable's own icon are fallbacks.
+    frame; the PNGs are the fallback, and :func:`create_image` the last resort.
     """
     try:
         icon_image = app_icon(active=config.block_enabled, size=64)
 
-        if icon_image is None:
-            exe_icon = get_exe_icon(sys.executable)
-            if exe_icon is not None:
-                icon_image = exe_icon.convert("RGBA")
-
         icon.icon = icon_image or create_image()
     except Exception as e:
         log(f"apply_state_icon error: {e}")
-
-
-def get_exe_icon(path: str, size: tuple[int, int] = (64, 64)) -> Any:
-    """Return a PIL Image of the executable icon, or None on failure."""
-    try:
-        from .platform.windows import get_exe_icon as win_get_exe_icon
-
-        return win_get_exe_icon(path, size)
-    except Exception:
-        return None
 
 
 def create_image() -> Image.Image | None:

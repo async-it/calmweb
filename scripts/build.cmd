@@ -98,8 +98,37 @@ if exist "%REPO_ROOT%\scripts\calmweb_installer.spec" del /f /q "%REPO_ROOT%\scr
 REM --- Write VERSION file for PyInstaller bundle ---
 echo %APP_VERSION%> "%REPO_ROOT%\VERSION"
 
+REM --- Modules deliberately left out of the bundle -----------------------
+REM Every name below was checked as unused by CalmWeb. Together they are
+REM worth roughly 18 MB of the frozen bundle.
+REM
+REM  * numpy        : never imported by CalmWeb. It is dragged in because
+REM                   PIL._typing references numpy.typing at module level,
+REM                   and it arrives with a 6.4 MB OpenBLAS DLL.
+REM  * PIL codecs   : the app only ever opens .ico and .png files.
+REM                   _avif.pyd alone is 4.3 MB.
+REM  * setuptools   : build-time only, never used at runtime.
+REM  * pywin32 GUI  : Pythonwin\mfc140u.dll, 2.7 MB, unused since
+REM                   get_exe_icon() was dropped.
+REM
+REM If a build ever fails to start after a dependency bump, drop these lines
+REM one at a time -- a missing module shows up in the log as ImportError.
+set "EXCLUDES="
+for %%M in (
+  numpy
+  setuptools pkg_resources _distutils_hack distutils wheel
+  PIL._avif PIL.AvifImagePlugin
+  PIL._webp PIL.WebPImagePlugin
+  PIL.ImageCms PIL._imagingcms
+  PIL.ImageQt
+  win32com win32comext win32ui pythonwin pywin
+  unittest doctest pydoc_data xmlrpc test lib2to3
+) do call set "EXCLUDES=%%EXCLUDES%% --exclude-module %%M"
+
 %PYINSTALLER% ^
   --clean ^
+  --optimize 2 ^
+  %EXCLUDES% ^
   --name calmweb_installer ^
   --hidden-import urllib3 ^
   --hidden-import tkinter ^
