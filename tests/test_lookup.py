@@ -178,6 +178,59 @@ class TestWhitelistOwnership:
         assert resolver.whitelist_download_successful is True
 
 
+class TestUserCidrRanges:
+    """A CIDR range written in ``[WHITELIST]`` has to become a *network*.
+
+    ``config.whitelisted_domains`` is a set of strings, so "10.0.0.0/24"
+    reaches the resolver as text.  Filed as a hostname it is compared to
+    domain names and matches nothing -- which is exactly what a user sees:
+    the individual addresses they whitelisted work, their ranges do not.
+    """
+
+    def _load(self, monkeypatch) -> BlocklistResolver:
+        import calmweb.resolver as resolver_module
+
+        monkeypatch.setattr(resolver_module.urllib3, "PoolManager", _FakePool)
+        resolver = _resolver()
+        resolver.whitelist_download_successful = False
+        resolver._load_whitelist()
+        return resolver
+
+    def test_ipv4_range_is_loaded_as_a_network(self, monkeypatch):
+        config.whitelisted_domains = {"10.0.0.0/24"}
+        resolver = self._load(monkeypatch)
+        assert any(str(n) == "10.0.0.0/24" for n in resolver.whitelisted_networks)
+        assert "10.0.0.0/24" not in resolver.whitelisted_domains_local
+
+    def test_ipv6_range_allows_an_address_inside_it(self, monkeypatch):
+        config.whitelisted_domains = {"2a03:17e0:2:ff::/64"}
+        resolver = self._load(monkeypatch)
+        assert any(str(n) == "2a03:17e0:2:ff::/64" for n in resolver.whitelisted_networks)
+        assert resolver.is_whitelisted("2a03:17e0:2:ff::f:49") is True
+        assert resolver.describe("2a03:17e0:2:ff::f:49")["source"] == "whitelist"
+
+    def test_address_outside_the_range_is_not_whitelisted(self, monkeypatch):
+        config.whitelisted_domains = {"2a03:17e0:2:ff::/64"}
+        resolver = self._load(monkeypatch)
+        assert resolver.is_whitelisted("2a03:17e0:2:fe::1") is False
+
+    def test_plain_domains_and_addresses_still_load(self, monkeypatch):
+        config.whitelisted_domains = {"mabanque.example", "203.0.113.7"}
+        resolver = self._load(monkeypatch)
+        assert "mabanque.example" in resolver.whitelisted_domains_local
+        assert "203.0.113.7" in resolver.whitelisted_domains_local
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["2001:0db8:0000:0000:0000:0000:0000:0001", "2001:DB8::1", "[2001:db8::1]"],
+)
+def test_whitelisted_ipv6_matches_however_it_is_written(written):
+    """The whitelist stores the canonical form; the request may not use it."""
+    resolver = _resolver(whitelist={"2001:db8::1"})
+    assert resolver.describe(written)["source"] == "whitelist"
+
+
 # ===================================================================
 # Instant allow
 # ===================================================================

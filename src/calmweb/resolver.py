@@ -345,11 +345,25 @@ class BlocklistResolver:
             new_networks: set[ipaddress.IPv4Network | ipaddress.IPv6Network] = set()
             any_download_succeeded = False
 
-            # Seed with global whitelisted_domains from config
+            # Seed with the user's own whitelist from custom.cfg.
+            #
+            # ``config.whitelisted_domains`` is a set of *strings*, so a CIDR
+            # range typed in ``[WHITELIST]`` arrives here as the text
+            # "10.0.0.0/24".  Adding it straight to ``new_domains`` filed it
+            # as a hostname, where it could only ever be compared to a domain
+            # name and so matched nothing: the user's ranges were silently
+            # inert while their individual addresses worked.  Every entry now
+            # goes through the same parser as a downloaded line, which sends
+            # ranges to ``new_networks`` and addresses to ``new_domains``.
             try:
                 for d in config.whitelisted_domains:
-                    if isinstance(d, str) and d:
-                        new_domains.add(d.lower().lstrip("."))
+                    if not isinstance(d, str) or not d:
+                        continue
+                    domain, network = _parse_whitelist_entry(d)
+                    if domain is not None:
+                        new_domains.add(domain)
+                    elif network is not None:
+                        new_networks.add(network)
             except Exception:
                 pass
 
@@ -437,8 +451,15 @@ class BlocklistResolver:
             try:
                 if _looks_like_ip(host):
                     ip_obj = ipaddress.ip_address(host)
+                    # An address can be written several ways -- "2a03:17e0:2:ff::f:49"
+                    # and "2a03:17e0:0002:00ff:0:f:49" are the same host -- while
+                    # the whitelist stores the canonical form, so both are tried.
+                    canonical = str(ip_obj)
                     with self._lock:
-                        if host in self.whitelisted_domains_local:
+                        if (
+                            host in self.whitelisted_domains_local
+                            or canonical in self.whitelisted_domains_local
+                        ):
                             return True
                         for net in self.whitelisted_networks:
                             if ip_obj in net:
@@ -573,9 +594,12 @@ class BlocklistResolver:
             # Whitelist first -- it overrides everything.
             if _looks_like_ip(host):
                 ip_obj = ipaddress.ip_address(host)
+                canonical = str(ip_obj)
                 with self._lock:
                     if host in self.whitelisted_domains_local:
                         return {**result, "source": "whitelist", "match": host}
+                    if canonical in self.whitelisted_domains_local:
+                        return {**result, "source": "whitelist", "match": canonical}
                     for net in self.whitelisted_networks:
                         if ip_obj in net:
                             return {**result, "source": "whitelist", "match": str(net)}
