@@ -54,6 +54,7 @@ missing module named PyObjCTools - imported by pystray._darwin (top-level), dark
 missing module named objc - imported by pystray._darwin (top-level)
 missing module named Foundation - imported by pystray._darwin (top-level), darkdetect._mac_detect (optional)
 missing module named AppKit - imported by pystray._darwin (top-level)
+missing module named truststore - imported by calmweb.net (optional), C:\Users\Jo\Downloads\calmweb-main_1.7.6\scripts\pyinstaller_entry.py (top-level)
 missing module named 'pyodide.ffi' - imported by urllib3.contrib.emscripten.fetch (delayed, optional)
 missing module named pyodide - imported by urllib3.contrib.emscripten.fetch (top-level)
 missing module named js - imported by urllib3.contrib.emscripten.fetch (top-level)

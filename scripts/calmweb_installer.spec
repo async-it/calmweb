@@ -1,16 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('C:/Users/Jo/Downloads/calmweb-main_1.7.5/scripts/../resources/calmweb_icon.png', '.'), ('C:/Users/Jo/Downloads/calmweb-main_1.7.5/scripts/../resources/calmweb_active.png', '.'), ('C:/Users/Jo/Downloads/calmweb-main_1.7.5/scripts/../resources/calmweb.ico', '.'), ('C:/Users/Jo/Downloads/calmweb-main_1.7.5/scripts/../resources/calmweb_active.ico', '.'), ('C:/Users/Jo/Downloads/calmweb-main_1.7.5/scripts/../VERSION', '.')]
+datas = [('C:/Users/Jo/Downloads/calmweb-main_1.7.6/scripts/../resources/calmweb_icon.png', '.'), ('C:/Users/Jo/Downloads/calmweb-main_1.7.6/scripts/../resources/calmweb_active.png', '.'), ('C:/Users/Jo/Downloads/calmweb-main_1.7.6/scripts/../resources/calmweb.ico', '.'), ('C:/Users/Jo/Downloads/calmweb-main_1.7.6/scripts/../resources/calmweb_active.ico', '.'), ('C:/Users/Jo/Downloads/calmweb-main_1.7.6/scripts/../VERSION', '.')]
 binaries = []
-hiddenimports = ['urllib3', 'tkinter', 'tkinter.scrolledtext', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox', 'darkdetect', 'calmweb.gui', 'calmweb.i18n', 'calmweb.stats']
+hiddenimports = ['urllib3', 'truststore', 'certifi', 'calmweb.net', 'tkinter', 'tkinter.scrolledtext', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox', 'darkdetect', 'calmweb.gui', 'calmweb.i18n', 'calmweb.stats']
 tmp_ret = collect_all('customtkinter')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
-    ['C:/Users/Jo/Downloads/calmweb-main_1.7.5/scripts/../scripts/pyinstaller_entry.py'],
-    pathex=['C:/Users/Jo/Downloads/calmweb-main_1.7.5/scripts/../src'],
+    ['C:/Users/Jo/Downloads/calmweb-main_1.7.6/scripts/../scripts/pyinstaller_entry.py'],
+    pathex=['C:/Users/Jo/Downloads/calmweb-main_1.7.6/scripts/../src'],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
@@ -42,5 +42,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['C:/Users/Jo/Downloads/calmweb-main_1.7.5/scripts/../resources/calmweb.ico'],
+    icon=['C:/Users/Jo/Downloads/calmweb-main_1.7.6/scripts/../resources/calmweb.ico'],
 )

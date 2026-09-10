@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "CalmWeb"
-version = "1.7.5"
+version = "1.7.6"
 description = "A system-wide web proxy filter to protect users from ads, scams, and remote control software"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -13,6 +13,7 @@ dependencies = [
     "urllib3",
     "requests",
     "certifi",
+    "truststore",
     "pillow",
     "pystray",
     "customtkinter>=5.2",

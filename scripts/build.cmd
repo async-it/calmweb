@@ -131,6 +131,9 @@ for %%M in (
   %EXCLUDES% ^
   --name calmweb_installer ^
   --hidden-import urllib3 ^
+  --hidden-import truststore ^
+  --hidden-import certifi ^
+  --hidden-import calmweb.net ^
   --hidden-import tkinter ^
   --hidden-import tkinter.scrolledtext ^
   --hidden-import tkinter.ttk ^

@@ -18,6 +18,7 @@ import urllib3
 from . import __version__
 from .config import GITHUB_RELEASES_URL, GITHUB_REPO_URL
 from .log import log
+from .net import make_pool_manager
 
 
 @dataclass
@@ -45,7 +46,7 @@ def check_for_update() -> UpdateInfo | None:
     """
     log("Recherche de mises à jour...")
 
-    http = urllib3.PoolManager(
+    http = make_pool_manager(
         timeout=urllib3.Timeout(connect=10.0, read=15.0),
         retries=urllib3.Retry(total=2, backoff_factor=0.5),
     )
@@ -148,7 +149,7 @@ def download_installer(
 
     log(f"Téléchargement de la mise à jour depuis {url} ...")
 
-    http = urllib3.PoolManager(
+    http = make_pool_manager(
         timeout=urllib3.Timeout(connect=10.0, read=30.0),
     )
 

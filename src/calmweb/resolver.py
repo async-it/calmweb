@@ -10,18 +10,17 @@ from __future__ import annotations
 import csv
 import io
 import ipaddress
-import ssl
 import threading
 import time
 import traceback
 import zipfile
 from urllib.parse import urlparse
 
-import certifi
 import urllib3
 
 from . import config
 from .log import log
+from .net import make_pool_manager
 from .normalize import normalize_host, normalize_whitelist_entry, parse_list_line
 
 # ------------------------------------------------------------------
@@ -295,11 +294,7 @@ class BlocklistResolver:
             config._RESOLVER_LOADING.set()
             try:
                 domains: set[str] = set()
-                ssl_context = ssl.create_default_context(cafile=certifi.where())
-                http = urllib3.PoolManager(
-                    cert_reqs="CERT_REQUIRED",
-                    ssl_context=ssl_context,
-                )
+                http = make_pool_manager()
                 cap_reached = False
 
                 for url in self.blocklist_urls:
@@ -336,11 +331,7 @@ class BlocklistResolver:
     def _load_whitelist(self) -> None:
         """Download and parse whitelists, updating local and global sets."""
         try:
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-            http = urllib3.PoolManager(
-                cert_reqs="CERT_REQUIRED",
-                ssl_context=ssl_context,
-            )
+            http = make_pool_manager()
             new_domains: set[str] = set()
             new_networks: set[ipaddress.IPv4Network | ipaddress.IPv6Network] = set()
             any_download_succeeded = False

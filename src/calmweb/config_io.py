@@ -14,6 +14,7 @@ import urllib3
 
 from . import config
 from .log import log
+from .net import make_pool_manager
 from .parser import as_bool, parse_cfg_file, write_cfg_file
 
 # ===================================================================
@@ -294,7 +295,7 @@ def download_red_flag_domains() -> bool:
         os.makedirs(config.USER_CFG_DIR, exist_ok=True)
 
         # Download with urllib3
-        http = urllib3.PoolManager()
+        http = make_pool_manager()
         response = http.request(
             "GET",
             config.RED_FLAG_DOMAINS_URL,
