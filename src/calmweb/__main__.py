@@ -1,4 +1,7 @@
-"""CalmWeb entry point (``python -m calmweb``)."""
+"""CalmWeb entry point (``python -m calmweb``).
+
+Version: 1.7.7
+"""
 
 from __future__ import annotations
 
@@ -15,10 +18,12 @@ from pystray import Icon
 
 from . import config, stats
 from .config_io import (
+    current_options,
     ensure_custom_cfg_exists,
     get_blocklist_urls,
     load_custom_cfg_to_globals,
     read_bool_option,
+    save_custom_cfg,
 )
 from .i18n import detect_system_language, set_language, t
 from .log import log
@@ -101,6 +106,17 @@ def run_calmweb() -> None:
             load_custom_cfg_to_globals(cfg_path)
         except Exception as e:
             log(f"Error loading initial config: {e}")
+
+        # The protection always comes back on at launch (and so after every
+        # reboot): switching it off is meant for the current session only.
+        # The saved state is rewritten so custom.cfg agrees with reality.
+        if not config.block_enabled:
+            config.block_enabled = True
+            log("Protection réactivée automatiquement au démarrage.")
+            try:
+                save_custom_cfg(options=current_options())
+            except Exception as e:
+                log(f"Error saving re-enabled protection state: {e}")
 
         try:
             resolver = BlocklistResolver(get_blocklist_urls(), config.RELOAD_INTERVAL)

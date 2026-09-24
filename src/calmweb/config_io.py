@@ -36,11 +36,9 @@ def get_custom_cfg_path(install_dir: str | None = None) -> str:
 
 #: On/off options, with the value used for a fresh custom.cfg.
 BOOL_OPTIONS: dict[str, bool] = {
-    # The protection itself.  On for a fresh installation, and remembered
-    # across restarts: before it was persisted, every launch came back at the
-    # built-in default and a user who had switched filtering off (or whom the
-    # whitelist safety pause had switched off) had no way to tell which state
-    # was deliberate.
+    # The protection itself.  On for a fresh installation.  Saved on every
+    # toggle, but forced back on at each launch (see __main__), so a manual
+    # "off" never outlives a restart or reboot.
     "block_enabled": True,
     "block_ip_direct": True,
     "block_http_traffic": True,

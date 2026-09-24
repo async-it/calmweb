@@ -174,8 +174,8 @@ RED_FLAG_TIMESTAMP_PATH: str = os.path.join(USER_CFG_DIR, "red_flag_last_update.
 # ---------------------------------------------------------------------------
 
 # Persisted in custom.cfg (see ``config_io.BOOL_OPTIONS``): a fresh
-# installation starts with the protection on, and a deliberate "off" survives
-# a restart instead of coming back at the built-in default.
+# installation starts with the protection on.  Switching it off only lasts
+# until the next launch: __main__ turns it back on at every start (reboot).
 block_enabled: bool = True
 
 #: True while the protection is *paused* because no whitelist could be
