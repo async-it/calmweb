@@ -19,7 +19,7 @@
   <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d6">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.12%2B-3776ab">
   <img alt="Licence" src="https://img.shields.io/badge/licence-GPL--3.0-blue">
-  <img alt="Domaines filtrés" src="https://img.shields.io/badge/domaines%20filtr%C3%A9s-400%20000%2B-orange">
+  <img alt="Domaines filtrés" src="https://img.shields.io/badge/domaines%20filtr%C3%A9s-600%20000%2B-orange">
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@
 
 Calm Web s'installe **au niveau du système** : une fois lancé, tout ce qui sort du PC pour aller sur le web passe par lui, quel que soit le navigateur et quel que soit le compte utilisateur.
 
-- 🛡️ **Plus de 400 000 domaines bloqués** — publicité, traçage, arnaques, malware.
+- 🛡️ **Plus de 600 000 domaines bloqués** — publicité, traçage, arnaques, malware.
 - 🔒 **HTTPS obligatoire** — le trafic en clair est refusé.
 - 🖥️ **Prises de contrôle à distance bloquées** — TeamViewer, AnyDesk et consorts, l'outil préféré des faux dépanneurs ([liste](https://github.com/async-it/calmweb/blob/main/filters/blocklist.txt)).
 - 🚫 **Adresses IP directes et ports exotiques refusés**.
@@ -48,7 +48,7 @@ Calm Web s'installe **au niveau du système** : une fois lancé, tout ce qui sor
 
 1. Télécharger la dernière version — **[⬇️ TÉLÉCHARGEMENT](https://github.com/async-it/calmweb/releases/latest)** (Windows uniquement).
 2. Exécuter le fichier et suivre les indications.
-3. Calm Web démarre dans la barre des tâches. Il peut être nécessaire de cliquer sur <img width="24" alt="chevron" src="https://github.com/user-attachments/assets/20bafe23-b3ca-411e-8706-922b123859b2" /> en bas à droite pour voir l'icône.
+3. Calm Web démarre dans la barre des tâches, puis automatiquement à chaque ouverture de session, pour tous les utilisateurs du PC. Le proxy système est désactivé dès que Calm Web quitte, que la session se ferme ou que le PC s'éteint. Il peut être nécessaire de cliquer sur <img width="24" alt="chevron" src="https://github.com/user-attachments/assets/20bafe23-b3ca-411e-8706-922b123859b2" /> en bas à droite pour voir l'icône.
 
 ### La fenêtre Calm Web
 
@@ -197,7 +197,7 @@ Le fichier vit dans `%APPDATA%\CalmWeb` ; son emplacement exact est indiqué dan
 | `block_ip_direct` | `1` | Bloque la navigation directe vers une adresse IP (IPv4 et IPv6). |
 | `block_http_other_ports` | `1` | Seuls les ports 80, 443 et 3478 (relais TURN des appels WebRTC) sont autorisés. À mettre à `0` si un bac à sable ou une application métier cesse de fonctionner. |
 | `notify_on_block` | `0` | Notification système nommant le domaine et la règle lors d'un blocage — un site bloqué en HTTPS ne peut pas afficher de page d'explication, le navigateur montre seulement une erreur de connexion. Les blocages répétés sont regroupés. Désactivé par défaut : sur une page chargée de publicités, le blocage intéressant est noyé parmi des dizaines d'autres. |
-| `ask_elevation` | `1` | Propose un redémarrage en administrateur au lancement, et seulement quand cela sert à quelque chose — aujourd'hui, installer les exemptions loopback. Refuser démarre Calm Web sans privilèges. Un compte standard n'est jamais sollicité. |
+| `ask_elevation` | `1` | Autorise Calm Web à redémarrer en administrateur au lancement, uniquement si Windows l'accorde **sans invite UAC** (UAC réglé sur « Élever sans demander ») et si cela sert à quelque chose — aujourd'hui, poser des exemptions loopback manquantes. Aucune invite n'est jamais affichée : l'installeur pose ces exemptions une fois pour toutes. |
 | `allow_revocation_http` | `1` | Laisse passer le trafic de révocation de certificats (CRL, AIA, OCSP) malgré la règle HTTPS ; ce trafic ne circule qu'en HTTP en clair. **Pas d'interrupteur dans l'interface** — c'est un réglage de diagnostic. Chaque requête autorisée apparaît dans l'onglet *Système*. Les listes noires s'appliquent toujours. |
 | `language` | *(vide)* | `fr`, `en`, ou vide pour suivre Windows. |
 | `theme` | `system` | `system`, `light` ou `dark`. |
